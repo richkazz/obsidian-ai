@@ -73,7 +73,7 @@ export function SessionHistory() {
       title="Sessions"
       badge={
         sessions.length > 0 ? (
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center">
+          <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 min-w-4 flex items-center justify-center">
             {sessions.length}
           </Badge>
         ) : undefined
@@ -85,7 +85,7 @@ export function SessionHistory() {
         </p>
       ) : sessions.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-4 text-center">
-          <MessageSquare className="h-6 w-6 text-muted-foreground/50" />
+          <MessageSquare className="h-6 w-6 text-muted-foreground" />
           <p className="text-xs text-muted-foreground">No conversations yet</p>
         </div>
       ) : (
@@ -97,22 +97,22 @@ export function SessionHistory() {
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter") loadSession(session.id) }}
-              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left group transition-colors cursor-pointer overflow-hidden h-16 ${
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left group transition-colors cursor-pointer overflow-hidden h-16 ${
                 selectedSessionId === session.id
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "hover:bg-sidebar-accent/50"
               }`}
             >
-              <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
               <div className="flex-1 min-w-0 overflow-hidden">
-                <div className="text-sm truncate">
+                <div className="text-sm font-medium truncate">
                   {session.title || "New conversation"}
                 </div>
-                <div className="text-[10px] text-muted-foreground">
+                <div className="text-xs text-muted-foreground">
                   {formatRelativeDate(session.created_at)}
                 </div>
                 {((session.total_input_tokens ?? 0) + (session.total_output_tokens ?? 0)) > 0 && (
-                  <div className="text-[10px] text-muted-foreground/70 tabular-nums">
+                  <div className="text-xs text-muted-foreground tabular-nums">
                     {formatTokenCount((session.total_input_tokens ?? 0) + (session.total_output_tokens ?? 0))} tokens
                   </div>
                 )}
@@ -122,7 +122,7 @@ export function SessionHistory() {
                   e.stopPropagation()
                   deleteSession(session.id)
                 }}
-                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-sidebar-accent"
+                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-sidebar-accent cursor-pointer"
               >
                 <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
               </button>

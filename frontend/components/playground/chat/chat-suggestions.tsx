@@ -1,9 +1,11 @@
 "use client"
 
 import { useMemo } from "react"
+import { motion } from "motion/react"
 import { PromptSuggestion } from "@/components/ai-elements/prompt-suggestion"
 import { Bot, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { fadeInUp, springTransition } from "@/lib/motion"
 import type { Agent, Team } from "@/types/playground"
 
 interface ChatSuggestionsProps {
@@ -243,51 +245,68 @@ export function ChatSuggestions({
   )
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 px-4">
+    <div className="flex-1 flex flex-col items-center justify-center gap-8 px-4">
       {/* Header */}
-      <div className="flex flex-col items-center gap-3">
-        <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-muted">
-          <Bot className="h-7 w-7 text-muted-foreground" />
+      <motion.div
+        className="flex flex-col items-center gap-4"
+        initial={fadeInUp.initial}
+        animate={fadeInUp.animate}
+        transition={springTransition}
+      >
+        <div className="flex items-center justify-center h-20 w-20 rounded-2xl bg-muted">
+          <Bot className="h-10 w-10 text-muted-foreground" />
         </div>
-        <div className="text-center space-y-1.5">
-          <h2 className="text-lg font-semibold">
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
             {name || "Start a conversation"}
           </h2>
           {description && (
-            <p className="text-sm text-muted-foreground max-w-md">
+            <p className="text-base text-muted-foreground max-w-md">
               {description}
             </p>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* Team members */}
       {mode === "team" && teamAgents && teamAgents.length > 0 && (
-        <div className="flex flex-col items-center gap-2 max-w-md">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Users className="h-3 w-3" />
+        <motion.div
+          className="flex flex-col items-center gap-2 max-w-md"
+          initial={fadeInUp.initial}
+          animate={fadeInUp.animate}
+          transition={{ ...springTransition, delay: 0.05 }}
+        >
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Users className="h-3.5 w-3.5" />
             <span>{teamAgents.length} agent{teamAgents.length !== 1 ? "s" : ""} &middot; {team?.mode}</span>
           </div>
           <div className="flex flex-wrap justify-center gap-1.5">
             {teamAgents.map((a) => (
-              <Badge key={a.id} variant="outline" className="text-[11px]">
+              <Badge key={a.id} variant="outline" className="text-xs">
                 {a.name}
               </Badge>
             ))}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Contextual suggestions */}
-      <div className="flex flex-wrap justify-center gap-2 max-w-lg">
-        {suggestions.map((s) => (
-          <PromptSuggestion
+      <div className="flex flex-wrap justify-center gap-2.5 max-w-lg">
+        {suggestions.map((s, i) => (
+          <motion.div
             key={s.prompt}
-            onClick={() => onSelect(s.prompt)}
-            className="text-xs h-auto py-2 px-4"
+            initial={fadeInUp.initial}
+            animate={fadeInUp.animate}
+            transition={{ ...springTransition, delay: 0.08 + i * 0.05 }}
           >
-            {s.label}
-          </PromptSuggestion>
+            <PromptSuggestion
+              onClick={() => onSelect(s.prompt)}
+              size="lg"
+              className="rounded-full cursor-pointer"
+            >
+              {s.label}
+            </PromptSuggestion>
+          </motion.div>
         ))}
       </div>
     </div>

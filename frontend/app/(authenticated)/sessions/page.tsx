@@ -135,15 +135,15 @@ export default function SessionsPage() {
   }
 
   return (
-    <div className="h-full w-full overflow-y-auto p-6 max-w-5xl mx-auto">
+    <div className="h-full overflow-y-auto p-8 w-full space-y-8">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3">
         <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-muted">
           <History className="h-5 w-5 text-muted-foreground" />
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">Sessions</h1>
+            <h1 className="text-3xl font-bold tracking-tight uppercase">Sessions</h1>
             <Badge variant="secondary" className="text-xs">
               {filteredSessions.length}
             </Badge>
@@ -155,17 +155,17 @@ export default function SessionsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search sessions..."
-            className="w-full pl-9 h-9"
+            className="w-full pl-9"
           />
         </div>
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-36 h-9">
+          <SelectTrigger className="w-36">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -187,10 +187,10 @@ export default function SessionsPage() {
         </div>
       ) : filteredSessions.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <MessageSquare className="h-10 w-10 text-muted-foreground/30" />
+          <MessageSquare className="h-10 w-10 text-muted-foreground" />
           <div>
             <p className="text-sm font-medium">No sessions found</p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {searchQuery || filterType !== "all"
                 ? "Try adjusting your filters"
                 : "Start a conversation in the playground to see sessions here"}
@@ -232,7 +232,7 @@ export default function SessionsPage() {
                     <span className="text-xs text-muted-foreground">
                       {getEntityName(session)}
                     </span>
-                    <span className="text-xs text-muted-foreground/50">
+                    <span className="text-xs text-muted-foreground">
                       {formatDate(session.created_at)}
                     </span>
                   </div>

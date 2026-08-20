@@ -9,14 +9,17 @@ from .base import BaseLLMProvider, LLMMessage, LLMStreamChunk, LLMToolCall
 
 class AnthropicProvider(BaseLLMProvider):
 
-    def __init__(self, api_key=None, base_url=None, model_id="claude-sonnet-4-6", config=None):
+    def __init__(self, api_key=None, base_url=None, model_id="claude-sonnet-5", config=None):
         super().__init__(api_key, base_url or "https://api.anthropic.com/v1", model_id, config)
 
     def _headers(self) -> dict:
+        # anthropic-version is a stable, date-pinned API version string (not tied to
+        # model releases) — 2023-06-01 remains current. Prompt caching (cache_control
+        # blocks, used in _build_system) graduated out of beta and no longer needs an
+        # anthropic-beta opt-in header.
         headers = {
             "Content-Type": "application/json",
             "anthropic-version": "2023-06-01",
-            "anthropic-beta": "prompt-caching-2024-07-31",
         }
         if self.api_key:
             headers["x-api-key"] = self.api_key
@@ -78,17 +81,31 @@ class AnthropicProvider(BaseLLMProvider):
         """Convert OpenAI-format tools to Anthropic format.
         OpenAI: {"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}
         Anthropic: {"name": ..., "description": ..., "input_schema": ...}
+
+        Anthropic rejects the whole request with a 400 if any two tools share a
+        name, so we dedupe here (keep-first-occurrence) as a last line of
+        defense in case a caller assembled the tools list from multiple sources
+        (agent-defined tools, MCP servers, KB tools) without deduping upstream.
         """
         converted = []
+        seen_names = set()
         for tool in tools:
             if "function" in tool:
                 fn = tool["function"]
+                name = fn.get("name", "")
+                if name in seen_names:
+                    continue
+                seen_names.add(name)
                 converted.append({
-                    "name": fn.get("name", ""),
+                    "name": name,
                     "description": fn.get("description", ""),
                     "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
                 })
             else:
+                name = tool.get("name", "")
+                if name in seen_names:
+                    continue
+                seen_names.add(name)
                 converted.append(tool)
         return converted
 
@@ -96,6 +113,34 @@ class AnthropicProvider(BaseLLMProvider):
     def _build_system(system_prompt: str) -> list[dict]:
         """Wrap system prompt as a structured block with prompt caching enabled."""
         return [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
+
+    # Current-generation models (Opus 4.7+, Sonnet 5+, and the Fable/Mythos lines)
+    # reject temperature/top_p/top_k sampling params outright and use
+    # output_config.effort instead of the older thinking.budget_tokens knob.
+    _CURRENT_GEN_PREFIXES = (
+        "claude-opus-4-7", "claude-opus-4-8",
+        "claude-sonnet-5",
+        "claude-fable-5", "claude-mythos-5",
+    )
+
+    def _is_current_gen(self) -> bool:
+        return self.model_id.startswith(self._CURRENT_GEN_PREFIXES)
+
+    def _apply_sampling_and_effort(self, payload: dict) -> None:
+        """Apply temperature/effort config appropriately for the target model
+        generation. Older models: plain temperature/top_p, no effort/adaptive
+        thinking. Current-gen models: no sampling params (rejected by the API),
+        optional output_config.effort + thinking.type=adaptive instead."""
+        if self._is_current_gen():
+            effort = self.config.get("effort")  # low | medium | high | xhigh | max
+            if effort:
+                payload["output_config"] = {"effort": effort}
+                payload["thinking"] = {"type": "adaptive"}
+        else:
+            if self.config.get("temperature") is not None:
+                payload["temperature"] = self.config["temperature"]
+            if self.config.get("top_p") is not None:
+                payload["top_p"] = self.config["top_p"]
 
     async def chat(self, messages, system_prompt=None, tools=None) -> LLMMessage:
         payload = {
@@ -105,8 +150,7 @@ class AnthropicProvider(BaseLLMProvider):
         }
         if system_prompt:
             payload["system"] = self._build_system(system_prompt)
-        if self.config.get("temperature") is not None:
-            payload["temperature"] = self.config["temperature"]
+        self._apply_sampling_and_effort(payload)
         if tools:
             payload["tools"] = self._convert_tools(tools)
 
@@ -147,8 +191,7 @@ class AnthropicProvider(BaseLLMProvider):
         }
         if system_prompt:
             payload["system"] = self._build_system(system_prompt)
-        if self.config.get("temperature") is not None:
-            payload["temperature"] = self.config["temperature"]
+        self._apply_sampling_and_effort(payload)
         if tools:
             payload["tools"] = self._convert_tools(tools)
 
@@ -237,15 +280,15 @@ class AnthropicProvider(BaseLLMProvider):
                         return
 
     async def list_models(self) -> list[dict]:
-        # Anthropic doesn't have a models listing API
+        # Anthropic doesn't have a public models listing API usable here
         return [
+            {"id": "claude-fable-5", "name": "Claude Fable 5"},
+            {"id": "claude-opus-4-8", "name": "Claude Opus 4.8"},
+            {"id": "claude-sonnet-5", "name": "Claude Sonnet 5"},
+            {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5"},
+            {"id": "claude-opus-4-7", "name": "Claude Opus 4.7"},
             {"id": "claude-opus-4-6", "name": "Claude Opus 4.6"},
             {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6"},
-            {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5"},
-            {"id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet 4.5"},
-            {"id": "claude-opus-4-5-20251101", "name": "Claude Opus 4.5"},
-            {"id": "claude-opus-4-20250514", "name": "Claude Opus 4"},
-            {"id": "claude-sonnet-4-20250514", "name": "Claude Sonnet 4"},
         ]
 
     async def test_connection(self) -> bool:

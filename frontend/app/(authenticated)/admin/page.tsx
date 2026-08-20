@@ -87,7 +87,7 @@ export default function AdminPage() {
   if (!hasAccess(userRole, ["admin"])) return null
 
   return (
-    <div className="h-full overflow-y-auto p-6 w-full mx-auto space-y-6">
+    <div className="h-full overflow-y-auto p-8 w-full space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -95,7 +95,7 @@ export default function AdminPage() {
             <Shield className="h-5 w-5 text-muted-foreground" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Admin Panel</h1>
+            <h1 className="text-3xl font-bold tracking-tight uppercase">Admin Panel</h1>
             <p className="text-sm text-muted-foreground">
               Manage users and permissions
             </p>
@@ -115,7 +115,7 @@ export default function AdminPage() {
               <Users className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="text-2xl font-bold">{users.length}</p>
-                <p className="text-xs text-muted-foreground">Total Users</p>
+                <p className="text-sm text-muted-foreground">Total Users</p>
               </div>
             </div>
           </CardContent>
@@ -128,7 +128,7 @@ export default function AdminPage() {
                 <p className="text-2xl font-bold">
                   {users.filter((u) => u.role === "admin").length}
                 </p>
-                <p className="text-xs text-muted-foreground">Admins</p>
+                <p className="text-sm text-muted-foreground">Admins</p>
               </div>
             </div>
           </CardContent>
@@ -141,7 +141,7 @@ export default function AdminPage() {
                 <p className="text-2xl font-bold">
                   {users.filter((u) => u.role === "user").length}
                 </p>
-                <p className="text-xs text-muted-foreground">Users</p>
+                <p className="text-sm text-muted-foreground">Users</p>
               </div>
             </div>
           </CardContent>
@@ -151,7 +151,7 @@ export default function AdminPage() {
       {/* Users Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">All Users</CardTitle>
+          <CardTitle className="text-base">All Users</CardTitle>
           <CardDescription>
             Manage user accounts, roles, and resource permissions.
           </CardDescription>
@@ -203,7 +203,7 @@ export default function AdminPage() {
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-sm text-muted-foreground">
                           {enabledCount(user.permissions)}/{Object.keys(user.permissions).length} enabled
                         </span>
                       </td>

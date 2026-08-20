@@ -11,6 +11,7 @@ import type {
 } from "@/types/playground"
 import { Brain, Wrench, Clock, DollarSign, Zap, TrendingUp, AlertCircle, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -53,13 +54,13 @@ function StatCard({
   accent?: string
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-2">
+    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</span>
+        <span className="text-sm text-muted-foreground font-medium uppercase tracking-wide">{label}</span>
         <Icon className={`h-4 w-4 ${accent ?? "text-muted-foreground"}`} />
       </div>
       <p className="text-2xl font-semibold">{value}</p>
-      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+      {sub && <p className="text-sm text-muted-foreground">{sub}</p>}
     </div>
   )
 }
@@ -77,9 +78,9 @@ function TokenTimeline({ buckets }: { buckets: TokenBucket[] }) {
         const inputPct = (b.input_tokens / maxTotal) * 100
         const outputPct = (b.output_tokens / maxTotal) * 100
         return (
-          <div key={b.date} className="flex items-center gap-3 text-xs">
+          <div key={b.date} className="flex items-center gap-3 text-sm">
             <span className="w-20 shrink-0 text-muted-foreground">{b.date.slice(5)}</span>
-            <div className="flex-1 flex gap-0.5 h-4 rounded overflow-hidden bg-muted/30">
+            <div className="flex-1 flex gap-0.5 h-4 rounded overflow-hidden bg-muted">
               <div className="bg-violet-500/70 rounded-l" style={{ width: `${inputPct}%` }} />
               <div className="bg-emerald-500/70 rounded-r" style={{ width: `${outputPct}%` }} />
             </div>
@@ -88,7 +89,7 @@ function TokenTimeline({ buckets }: { buckets: TokenBucket[] }) {
           </div>
         )
       })}
-      <div className="flex gap-4 pt-2 text-[10px] text-muted-foreground">
+      <div className="flex gap-4 pt-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-violet-500/70 inline-block" /> Input</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500/70 inline-block" /> Output</span>
       </div>
@@ -101,7 +102,7 @@ function TokenTimeline({ buckets }: { buckets: TokenBucket[] }) {
 function LatencyTable({ models }: { models: LatencyBucket[] }) {
   if (!models.length) return <EmptyState label="No LLM calls in this period" />
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-sm">
       <thead>
         <tr className="text-muted-foreground border-b border-border">
           <th className="text-left pb-2 font-medium">Model</th>
@@ -113,7 +114,7 @@ function LatencyTable({ models }: { models: LatencyBucket[] }) {
       </thead>
       <tbody>
         {models.map((m) => (
-          <tr key={m.model} className="border-b border-border/50 last:border-0">
+          <tr key={m.model} className="border-b border-border last:border-0">
             <td className="py-2 font-mono truncate max-w-[160px]">{m.model}</td>
             <td className="py-2 text-right text-muted-foreground">{m.call_count}</td>
             <td className="py-2 text-right">{fmtMs(m.avg_ms)}</td>
@@ -131,7 +132,7 @@ function LatencyTable({ models }: { models: LatencyBucket[] }) {
 function ToolStatsTable({ tools }: { tools: ToolStat[] }) {
   if (!tools.length) return <EmptyState label="No tool calls in this period" />
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-sm">
       <thead>
         <tr className="text-muted-foreground border-b border-border">
           <th className="text-left pb-2 font-medium">Tool</th>
@@ -143,7 +144,7 @@ function ToolStatsTable({ tools }: { tools: ToolStat[] }) {
       </thead>
       <tbody>
         {tools.map((t) => (
-          <tr key={t.name} className="border-b border-border/50 last:border-0">
+          <tr key={t.name} className="border-b border-border last:border-0">
             <td className="py-2 font-mono truncate max-w-[160px]">{t.name}</td>
             <td className="py-2 text-right text-muted-foreground">{t.call_count}</td>
             <td className="py-2 text-right text-muted-foreground">{t.error_count}</td>
@@ -168,9 +169,9 @@ function CostByAgentTable({ agents }: { agents: CostByAgent[] }) {
       {agents.map((a, i) => {
         const barPct = (a.total_cost_usd / maxCost) * 100
         return (
-          <div key={i} className="flex items-center gap-3 text-xs">
+          <div key={i} className="flex items-center gap-3 text-sm">
             <span className="w-32 shrink-0 truncate">{a.agent_name ?? "Unknown"}</span>
-            <div className="flex-1 h-3 bg-muted/30 rounded overflow-hidden">
+            <div className="flex-1 h-3 bg-muted rounded overflow-hidden">
               <div className="h-full bg-amber-500/70 rounded" style={{ width: `${barPct}%` }} />
             </div>
             <span className="w-20 text-right font-medium">{fmtCost(a.total_cost_usd)}</span>
@@ -198,8 +199,8 @@ function EmptyState({ label }: { label: string }) {
 
 function Section({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <h2 className="flex items-center gap-2 text-sm font-semibold mb-4">
+    <div className="rounded-xl border border-border bg-card p-4">
+      <h2 className="flex items-center gap-2 text-base font-semibold mb-4">
         <Icon className="h-4 w-4 text-muted-foreground" />
         {title}
       </h2>
@@ -255,43 +256,44 @@ export default function ObservabilityPage() {
   }, [days, load])
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
-      <div className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
+    <div className="h-full overflow-y-auto p-8 w-full space-y-8">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold">Observability</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Token usage, latency, cost, and tool analytics</p>
+          <h1 className="text-3xl font-bold tracking-tight uppercase">Observability</h1>
+          <p className="text-sm text-muted-foreground mt-1">Token usage, latency, cost, and tool analytics</p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-            <SelectTrigger className="w-36 h-8 text-xs">
+            <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {RANGE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={String(o.value)} className="text-xs">
+                <SelectItem key={o.value} value={String(o.value)}>
                   {o.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <button
+          <Button
+            variant="outline"
+            size="icon"
             onClick={() => load(days)}
             disabled={loading}
-            className="h-8 w-8 flex items-center justify-center rounded-md border border-border hover:bg-muted/50 transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          </button>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
         </div>
       </div>
 
       {error && (
-        <div className="mx-6 mt-4 p-3 rounded-md bg-destructive/10 border border-destructive/30 flex items-center gap-2 text-sm text-destructive">
+        <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 flex items-center gap-2 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {error}
         </div>
       )}
 
-      <div className="flex-1 px-6 py-4 space-y-5">
+      <div className="space-y-5">
         {/* Overview stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard
@@ -345,8 +347,8 @@ export default function ObservabilityPage() {
         </div>
 
         {overview && (
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <Badge variant="outline" className="text-[10px]">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <Badge variant="outline">
               Error rate: {fmtPct(overview.error_rate)}
             </Badge>
             <span>·</span>

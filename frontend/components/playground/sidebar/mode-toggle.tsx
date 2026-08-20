@@ -22,7 +22,7 @@ export function ModeToggle() {
 
       <button
         onClick={() => setMode("agent")}
-        className={`relative z-10 flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${
+        className={`relative z-10 flex-1 text-sm font-medium py-1.5 rounded-md transition-colors cursor-pointer ${
           mode === "agent"
             ? "text-foreground"
             : "text-muted-foreground hover:text-foreground"
@@ -32,7 +32,7 @@ export function ModeToggle() {
       </button>
       <button
         onClick={() => setMode("team")}
-        className={`relative z-10 flex-1 text-xs font-medium py-1.5 p rounded-md transition-colors ${
+        className={`relative z-10 flex-1 text-sm font-medium py-1.5 rounded-md transition-colors cursor-pointer ${
           mode === "team"
             ? "text-foreground"
             : "text-muted-foreground hover:text-foreground"

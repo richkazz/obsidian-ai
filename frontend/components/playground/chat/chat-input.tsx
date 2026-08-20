@@ -39,7 +39,7 @@ function AttachmentPreview() {
           return (
             <div
               key={file.id}
-              className="relative group flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-2 py-1.5 text-xs"
+              className="relative group flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-2.5 py-2 text-xs"
             >
               {isImage ? (
                 <img
@@ -56,7 +56,7 @@ function AttachmentPreview() {
               <button
                 type="button"
                 onClick={() => remove(file.id)}
-                className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20 transition-colors"
+                className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20 transition-colors cursor-pointer"
               >
                 <X className="size-3 text-muted-foreground" />
               </button>
@@ -90,9 +90,9 @@ function ArtifactTargetSelector({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors",
+          "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer",
           target
-            ? "bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20"
+            ? "bg-primary/10 border-primary/30 text-primary hover:bg-primary/20"
             : "bg-muted/40 border-border text-muted-foreground hover:bg-muted/70 hover:text-foreground",
         )}
       >
@@ -118,7 +118,7 @@ function ArtifactTargetSelector({
             type="button"
             onClick={() => { onChange(null); setOpen(false) }}
             className={cn(
-              "w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-left",
+              "w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-left cursor-pointer",
               !target && "text-foreground font-medium",
               target && "text-muted-foreground",
             )}
@@ -136,14 +136,14 @@ function ArtifactTargetSelector({
               type="button"
               onClick={() => { onChange(a); setOpen(false) }}
               className={cn(
-                "w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-left",
-                target?.id === a.id && "text-violet-400 font-medium",
+                "w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-left cursor-pointer",
+                target?.id === a.id && "text-primary font-medium",
                 target?.id !== a.id && "text-muted-foreground",
               )}
             >
               <FileCode2 className="h-3 w-3 shrink-0" />
               <span className="truncate">{a.title}</span>
-              <span className="ml-auto shrink-0 text-[10px] opacity-60">{a.type}</span>
+              <span className="ml-auto shrink-0 text-xs opacity-60">{a.type}</span>
             </button>
           ))}
         </div>
@@ -177,7 +177,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputPr
   }
 
   return (
-    <div className="border-t border-border px-4 py-3">
+    <div className="border-t border-border px-4 py-4">
       <div className="max-w-3xl mx-auto flex flex-col gap-1.5">
         {/* Artifact target selector — outside PromptInput so dropdown isn't clipped */}
         {artifacts.length > 0 && (
@@ -211,7 +211,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputPr
                   <PromptInputActionAddAttachments label="Attach files" />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 Shift + Enter for new line
               </span>
             </PromptInputTools>

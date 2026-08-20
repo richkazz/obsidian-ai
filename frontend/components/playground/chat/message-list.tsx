@@ -117,7 +117,7 @@ export function MessageList({
             return (
               <div key={message.id} className="flex items-center gap-3 py-1">
                 <div className="flex-1 h-px bg-border" />
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
                   Context compacted — {count} messages summarized
                 </span>
                 <div className="flex-1 h-px bg-border" />
@@ -132,7 +132,7 @@ export function MessageList({
         {/* Agent step indicator (team mode) */}
         {isStreaming && streamingAgentStep && (
           <div className="flex items-center gap-2 px-2 py-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
             <span className="text-xs text-muted-foreground">
               {streamingAgentStep.step === "routing" && "Routing query..."}
               {streamingAgentStep.step === "responding" && `${streamingAgentStep.agent_name} is responding...`}

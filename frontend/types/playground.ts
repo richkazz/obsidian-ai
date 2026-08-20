@@ -21,6 +21,7 @@ export interface Agent {
   tools?: string[]
   mcp_server_ids?: string[]
   knowledge_base_ids?: string[]
+  skill_ids?: string[]
   hitl_confirmation_tools?: string[]
   allow_tool_creation?: boolean
   memory_enabled?: boolean
@@ -39,6 +40,15 @@ export interface PromptVaultEntry {
   content: string
   created_at: string
   updated_at?: string | null
+}
+
+export interface Skill {
+  id: string
+  name: string
+  description: string | null
+  instructions: string
+  created_at: string
+  updated_at: string | null
 }
 
 export interface Team {
@@ -161,11 +171,13 @@ export interface CreateAgentRequest {
   name: string
   description?: string
   system_prompt?: string
+  prompt_vault_id?: string
   provider_id?: string
   model_id?: string
   tools?: string[]
   mcp_server_ids?: string[]
   knowledge_base_ids?: string[]
+  skill_ids?: string[]
   hitl_confirmation_tools?: string[]
   allow_tool_creation?: boolean
   memory_enabled?: boolean
@@ -177,11 +189,13 @@ export interface UpdateAgentRequest {
   name?: string
   description?: string
   system_prompt?: string
+  prompt_vault_id?: string
   provider_id?: string
   model_id?: string
   tools?: string[]
   mcp_server_ids?: string[]
   knowledge_base_ids?: string[]
+  skill_ids?: string[]
   hitl_confirmation_tools?: string[]
   allow_tool_creation?: boolean
   memory_enabled?: boolean

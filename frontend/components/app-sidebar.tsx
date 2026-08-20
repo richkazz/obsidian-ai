@@ -2,7 +2,9 @@
 
 import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
+import { useTheme } from "next-themes"
 import Link from "next/link"
+import { motion } from "motion/react"
 import {
   Home,
   MessageSquare,
@@ -17,6 +19,9 @@ import {
   MessageCircle,
   Key,
   BookMarked,
+  Sparkles,
+  Moon,
+  Sun,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -28,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { Routes } from "@/config/routes"
+import { springTransition } from "@/lib/motion"
 import Logo from "./ui/logo"
 
 type NavItem = { label: string; icon: React.ElementType; path: string }
@@ -41,6 +47,7 @@ const mainItems: NavItem[] = [
 const vaultItems: NavItem[] = [
   { label: "Knowledge",    icon: BookOpen,      path: Routes.KNOWLEDGE },
   { label: "Prompts",      icon: BookMarked,    path: Routes.PROMPTS },
+  { label: "Skills",       icon: Sparkles,      path: Routes.SKILLS },
   { label: "Secrets",      icon: Key,           path: Routes.SECRETS },
 ]
 
@@ -69,6 +76,7 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const userRole = (session?.user as { role?: string })?.role
+  const { resolvedTheme, setTheme } = useTheme()
 
   const isActive = (item: NavItem) =>
     pathname === item.path ||
@@ -79,30 +87,37 @@ export function AppSidebar() {
       key={item.path}
       href={item.path}
       className={cn(
-        "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+        "relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
         isActive(item)
-          ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+          ? "text-sidebar-accent-foreground font-medium"
           : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
       )}
     >
-      <item.icon className="h-4 w-4 shrink-0" />
-      <span>{item.label}</span>
+      {isActive(item) && (
+        <motion.div
+          layoutId="sidebar-active-pill"
+          className="absolute inset-0 bg-sidebar-accent rounded-lg"
+          transition={springTransition}
+        />
+      )}
+      <item.icon className="relative h-4 w-4 shrink-0" />
+      <span className="relative">{item.label}</span>
     </Link>
   )
 
   return (
-    <div className="flex flex-col h-full w-54 bg-sidebar text-sidebar-foreground border-r border-sidebar-border shrink-0">
+    <div className="flex flex-col h-full w-72 bg-sidebar text-sidebar-foreground border-r border-sidebar-border shrink-0">
       {/* Logo */}
-      <div className="flex items-center justify-center h-12 px-4 border-b border-sidebar-border">
+      <div className="flex items-center h-14 px-5 border-b border-sidebar-border">
         <Logo className="h-5" />
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-3 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {groups.map((group, gi) => (
-          <div key={gi} className={gi > 0 ? "mt-4" : ""}>
+          <div key={gi} className={gi > 0 ? "mt-5" : ""}>
             {group.label && (
-              <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+              <p className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/60">
                 {group.label}
               </p>
             )}
@@ -139,6 +154,18 @@ export function AppSidebar() {
               <p className="text-xs text-muted-foreground">Signed in as</p>
               <p className="text-sm font-medium truncate">{session?.user?.email}</p>
             </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            >
+              {resolvedTheme === "dark" ? (
+                <Sun className="h-4 w-4 mr-2" />
+              ) : (
+                <Moon className="h-4 w-4 mr-2" />
+              )}
+              {resolvedTheme === "dark" ? "Light mode" : "Dark mode"}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive cursor-pointer"

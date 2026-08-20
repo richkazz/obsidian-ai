@@ -343,7 +343,7 @@ export function ToolDialog({ open, onOpenChange, initialTool }: ToolDialogProps)
     setView("form")
   }
 
-  const handleHandlerTypeChange = (type: string) => {
+  const handleHandlerTypeChange = (type: "http" | "python" | "builtin") => {
     setHandlerType(type)
     if (type === "http") {
       setHandlerConfigJson(

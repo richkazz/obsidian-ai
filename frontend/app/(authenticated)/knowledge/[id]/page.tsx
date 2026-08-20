@@ -207,7 +207,7 @@ export default function KnowledgeDetailPage() {
         </Button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold truncate">{kb.name}</h1>
+            <h1 className="text-2xl font-bold tracking-tight truncate">{kb.name}</h1>
             {kb.is_shared && (
               <Badge variant="secondary" className="text-xs gap-1 shrink-0">
                 <Globe className="h-3 w-3" />
@@ -216,7 +216,7 @@ export default function KnowledgeDetailPage() {
             )}
           </div>
           {kb.description && (
-            <p className="text-xs text-muted-foreground truncate">{kb.description}</p>
+            <p className="text-sm text-muted-foreground truncate">{kb.description}</p>
           )}
         </div>
         {canManageKB && (
@@ -237,7 +237,7 @@ export default function KnowledgeDetailPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {documents.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-60 gap-3 text-center">
-            <FileText className="h-10 w-10 text-muted-foreground/40" />
+            <FileText className="h-10 w-10 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No documents yet.</p>
             {canManageKB && (
               <div className="flex gap-2">
@@ -257,7 +257,7 @@ export default function KnowledgeDetailPage() {
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center gap-3 px-4 py-3 rounded-md border border-border bg-card hover:bg-muted/30 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-card hover:bg-muted/30 transition-colors"
               >
                 <div className="shrink-0">
                   {doc.doc_type === "text" ? (
@@ -269,7 +269,7 @@ export default function KnowledgeDetailPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{doc.name}</p>
                   {doc.filename && (
-                    <p className="text-xs text-muted-foreground truncate">{doc.filename}</p>
+                    <p className="text-sm text-muted-foreground truncate">{doc.filename}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -277,12 +277,12 @@ export default function KnowledgeDetailPage() {
                     {doc.doc_type}
                   </Badge>
                   {doc.indexed ? (
-                    <div className="flex items-center gap-1 text-xs text-emerald-600">
+                    <div className="flex items-center gap-1 text-sm text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       <span>Indexed</span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
                       <Clock className="h-3.5 w-3.5" />
                       <span>Pending</span>
                     </div>
@@ -291,7 +291,7 @@ export default function KnowledgeDetailPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive cursor-pointer"
                       onClick={() => handleDeleteDoc(doc)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -379,8 +379,8 @@ export default function KnowledgeDetailPage() {
               />
             </div>
             {fileFilename && (
-              <p className="text-xs text-muted-foreground">
-                Selected: <span className="font-medium">{fileFilename}</span>
+              <p className="text-sm text-muted-foreground">
+                Selected: <span className="font-medium text-foreground">{fileFilename}</span>
               </p>
             )}
           </div>

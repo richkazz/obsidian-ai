@@ -10,7 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from config import DATABASE_TYPE
 from database import get_db
-from models import Session as SessionModel, Message, Agent, LLMProvider, ToolDefinition, Team, MCPServer, FileAttachment, KnowledgeBase, HITLApproval, AgentMemory, TraceSpan, ToolProposal
+from models import Session as SessionModel, Message, Agent, LLMProvider, ToolDefinition, Team, MCPServer, FileAttachment, KnowledgeBase, HITLApproval, AgentMemory, TraceSpan, ToolProposal, Skill
 from schemas import ChatRequest, RateMessageRequest, HITLApprovalResponse, HITLPendingListResponse, ToolProposalResponse, ToolProposalPendingListResponse
 from auth import get_current_user, TokenData
 from encryption import decrypt_api_key
@@ -24,7 +24,7 @@ from builtin_tools import BUILTIN_TOOL_SCHEMAS, execute_builtin_tool, is_builtin
 
 if DATABASE_TYPE == "mongo":
     from database_mongo import get_database
-    from models_mongo import SessionCollection, MessageCollection, AgentCollection, LLMProviderCollection, ToolDefinitionCollection, TeamCollection, MCPServerCollection, FileAttachmentCollection, KnowledgeBaseCollection, HITLApprovalCollection, AgentMemoryCollection, ToolProposalCollection
+    from models_mongo import SessionCollection, MessageCollection, AgentCollection, LLMProviderCollection, ToolDefinitionCollection, SkillCollection, TeamCollection, MCPServerCollection, FileAttachmentCollection, KnowledgeBaseCollection, HITLApprovalCollection, AgentMemoryCollection, ToolProposalCollection
 
 logger = logging.getLogger(__name__)
 
@@ -415,9 +415,20 @@ def _build_artifact_context(past_messages) -> str:
     return "\n" + "\n".join(lines) + "\n"
 
 
-# Cost per 1M tokens in USD (input, output). Covers common models; unknown models return None.
+# Cost per 1M tokens in USD (input, output). Covers common models; unknown models return None
+# (which is why unrecognized/new model IDs silently show $0 in observability — keep this in
+# sync with llm/anthropic_provider.py::list_models, llm/google_provider.py::list_models, and
+# whatever OpenAI model IDs are commonly used, since OpenAI's list_models() is fetched live
+# and isn't otherwise constrained to this map).
 _MODEL_COST_PER_1M: dict[str, tuple[float, float]] = {
-    # Anthropic — Claude 4.x
+    # Anthropic — current generation
+    "claude-fable-5":               (15.0,   75.0),
+    "claude-mythos-5":               (15.0,   75.0),
+    "claude-opus-4-8":              (15.0,   75.0),
+    "claude-opus-4-7":              (15.0,   75.0),
+    "claude-sonnet-5":              (3.0,    15.0),
+    "claude-haiku-4-5":             (0.8,    4.0),
+    # Anthropic — Claude 4.x (older, still callable)
     "claude-opus-4-6":              (15.0,   75.0),
     "claude-sonnet-4-6":            (3.0,    15.0),
     "claude-haiku-4-5-20251001":    (0.8,    4.0),
@@ -425,7 +436,9 @@ _MODEL_COST_PER_1M: dict[str, tuple[float, float]] = {
     "claude-opus-4-5-20251101":     (15.0,   75.0),
     "claude-opus-4-20250514":       (15.0,   75.0),
     "claude-sonnet-4-20250514":     (3.0,    15.0),
-    # OpenAI — GPT-5 series
+    # OpenAI — current generation
+    "gpt-5.5":                      (5.0,    30.0),
+    # OpenAI — GPT-5 series (older, still callable)
     "gpt-5.4":                      (2.5,    15.0),
     "gpt-5.4-pro":                  (30.0,   180.0),
     "gpt-5.2":                      (1.75,   14.0),
@@ -452,12 +465,21 @@ _MODEL_COST_PER_1M: dict[str, tuple[float, float]] = {
     "o3-pro":                       (20.0,   80.0),
     "o3-mini":                      (1.1,    4.4),
     "o4-mini":                      (1.1,    4.4),
-    # Google — Gemini
+    # Google — Gemini 3.x (current generation)
+    "gemini-3.1-pro":               (2.0,    12.0),
+    "gemini-3.7-flash":             (0.2,    1.0),
+    "gemini-3.6-flash":             (0.2,    1.0),
+    "gemini-3.5-flash-lite":        (0.05,   0.3),
+    # Google — Gemini 2.x (older, still callable)
     "gemini-2.0-flash":             (0.1,    0.4),
     "gemini-2.5-pro":               (1.25,   10.0),
     "gemini-2.5-flash":             (0.075,  0.3),
     "gemini-1.5-pro":               (3.5,    10.5),
     "gemini-1.5-flash":             (0.075,  0.3),
+    # xAI — Grok (OpenAI-compatible endpoint, api.x.ai)
+    "grok-4.6":                     (3.0,    15.0),
+    "grok-4.3":                     (1.25,   2.5),
+    "grok-4.1-fast":                (0.2,    0.5),
 }
 
 _ANTHROPIC_CACHE_READ_PER_1M  = 0.3   # USD per 1M cache-read tokens
@@ -1011,9 +1033,11 @@ def _build_tools_for_llm(agent, db) -> list[dict] | None:
             ).all()
 
             builtin_names = {t["function"]["name"] for t in BUILTIN_TOOL_SCHEMAS}
+            seen_names = set(builtin_names)
             for td in tool_defs:
-                if td.name in builtin_names:
-                    continue  # skip user-defined tools that shadow builtins
+                if td.name in seen_names:
+                    continue  # skip builtins-shadowing and duplicate-named tool defs (keep first occurrence)
+                seen_names.add(td.name)
                 try:
                     parameters = json.loads(td.parameters_json) if td.parameters_json else {"type": "object", "properties": {}}
                 except json.JSONDecodeError:
@@ -1410,6 +1434,42 @@ def _build_memory_injection_dicts(memories: list[dict]) -> str:
         return ""
     lines = "\n".join(f"- [{m.get('category', 'context')}] {m['value']}" for m in memories)
     return f"\n\n## What I know about you:\n{lines}"
+
+
+def _agent_supports_skills(provider_record, model_id: str | None) -> bool:
+    """Skills are modeled on Anthropic's Agent Skills concept (progressive-
+    disclosure instruction bundles) and are only meaningful for Claude models
+    on an Anthropic provider — gate accordingly rather than injecting them
+    for providers/models that have no such convention."""
+    provider_type = getattr(provider_record, "provider_type", None) if not isinstance(provider_record, dict) \
+        else provider_record.get("provider_type")
+    if provider_type != "anthropic":
+        return False
+    return bool(model_id) and model_id.startswith("claude")
+
+
+def _build_skills_injection(skills: list) -> str:
+    """Return a formatted skills block (SQLAlchemy Skill rows) to append to
+    the system prompt, in SKILL.md-style progressive disclosure: name +
+    description first, full instructions below."""
+    if not skills:
+        return ""
+    sections = []
+    for s in skills:
+        header = f"### {s.name}" + (f" — {s.description}" if s.description else "")
+        sections.append(f"{header}\n{s.instructions}")
+    return "\n\n## Skills available to you:\n" + "\n\n".join(sections)
+
+
+def _build_skills_injection_dicts(skills: list[dict]) -> str:
+    """Same as above but for Mongo dicts."""
+    if not skills:
+        return ""
+    sections = []
+    for s in skills:
+        header = f"### {s['name']}" + (f" — {s['description']}" if s.get("description") else "")
+        sections.append(f"{header}\n{s['instructions']}")
+    return "\n\n## Skills available to you:\n" + "\n\n".join(sections)
 
 
 async def _reflect_and_store_sqlite(agent_id: int, provider_record, agent_model_id: str | None, session_id: int, user_id: int):
@@ -1811,7 +1871,20 @@ async def _chat_sqlite(request: ChatRequest, current_user: TokenData, db: DBSess
 
     _edit_target = _edit_target_early
     _sandbox_active = getattr(agent, "sandbox_enabled", False) and getattr(agent, "sandbox_container_id", None)
-    system_prompt = (agent.system_prompt or "") + _build_memory_injection(_agent_memories) + _ARTIFACT_SYSTEM_HINT + (_SANDBOX_SYSTEM_HINT if _sandbox_active else "") + _build_artifact_context(past_messages)
+    _skills_injection = ""
+    if agent.skill_ids_json and _agent_supports_skills(provider_record, agent.model_id):
+        try:
+            _skill_ids = json.loads(agent.skill_ids_json)
+        except (json.JSONDecodeError, TypeError):
+            _skill_ids = []
+        if _skill_ids:
+            _skills = db.query(Skill).filter(
+                Skill.id.in_(_skill_ids),
+                Skill.user_id == int(current_user.user_id),
+                Skill.is_active == True,
+            ).all()
+            _skills_injection = _build_skills_injection(_skills)
+    system_prompt = (agent.system_prompt or "") + _build_memory_injection(_agent_memories) + _ARTIFACT_SYSTEM_HINT + (_SANDBOX_SYSTEM_HINT if _sandbox_active else "") + _build_artifact_context(past_messages) + _skills_injection
     tools = _build_tools_for_llm(agent, db)
     # Inject sandbox tools if agent has an active sandbox container
     if _sandbox_active:
@@ -3436,6 +3509,7 @@ async def _build_tools_for_llm_mongo(agent, mongo_db) -> list[dict] | None:
     Built-in tools (web_search, fetch_url) are always included."""
     tools: list[dict] = list(BUILTIN_TOOL_SCHEMAS)
     builtin_names = {t["function"]["name"] for t in BUILTIN_TOOL_SCHEMAS}
+    seen_names = set(builtin_names)
 
     tools_raw = agent.get("tools_json") or agent.get("tools")
     if tools_raw:
@@ -3453,8 +3527,9 @@ async def _build_tools_for_llm_mongo(agent, mongo_db) -> list[dict] | None:
             td = await ToolDefinitionCollection.find_by_id(mongo_db, str(tid))
             if not td or not td.get("is_active", True):
                 continue
-            if td.get("name") in builtin_names:
-                continue  # skip user-defined tools that shadow builtins
+            if td.get("name") in seen_names:
+                continue  # skip builtins-shadowing and duplicate-named tool defs (keep first occurrence)
+            seen_names.add(td.get("name"))
             params = td.get("parameters_json") or td.get("parameters")
             if isinstance(params, str):
                 try:
@@ -3634,7 +3709,25 @@ async def _chat_mongo(request: ChatRequest, current_user: TokenData, start_time:
     llm = _create_llm_for_mongo_provider(provider_record, agent.get("model_id") or provider_record.get("model_id") or "gpt-4o")
     _edit_target_mongo = _edit_target_mongo_early
     _sandbox_active_mongo = agent.get("sandbox_enabled") and agent.get("sandbox_container_id")
-    system_prompt = (agent.get("system_prompt") or "") + _build_memory_injection_dicts(_agent_memories_mongo) + _ARTIFACT_SYSTEM_HINT + (_SANDBOX_SYSTEM_HINT if _sandbox_active_mongo else "") + _build_artifact_context(past_messages)
+    _skills_injection_mongo = ""
+    if agent.get("skill_ids_json") and _agent_supports_skills(provider_record, agent.get("model_id")):
+        _skill_ids_raw = agent.get("skill_ids_json")
+        if isinstance(_skill_ids_raw, str):
+            try:
+                _skill_ids_mongo = json.loads(_skill_ids_raw)
+            except (json.JSONDecodeError, TypeError):
+                _skill_ids_mongo = []
+        elif isinstance(_skill_ids_raw, list):
+            _skill_ids_mongo = _skill_ids_raw
+        else:
+            _skill_ids_mongo = []
+        _skills_mongo = []
+        for _sid in _skill_ids_mongo:
+            _sk = await SkillCollection.find_by_id(mongo_db, str(_sid))
+            if _sk and _sk.get("is_active", True) and _sk.get("user_id") == _user_id_str:
+                _skills_mongo.append(_sk)
+        _skills_injection_mongo = _build_skills_injection_dicts(_skills_mongo)
+    system_prompt = (agent.get("system_prompt") or "") + _build_memory_injection_dicts(_agent_memories_mongo) + _ARTIFACT_SYSTEM_HINT + (_SANDBOX_SYSTEM_HINT if _sandbox_active_mongo else "") + _build_artifact_context(past_messages) + _skills_injection_mongo
     tools = await _build_tools_for_llm_mongo(agent, mongo_db)
     # Inject sandbox tools if agent has an active sandbox container
     if _sandbox_active_mongo:

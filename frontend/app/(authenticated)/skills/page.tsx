@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
-import { BookMarked, Plus, Trash2, Pencil, Loader2, Search } from "lucide-react"
+import { Sparkles, Plus, Trash2, Pencil, Loader2, Search } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,53 +21,53 @@ import { Textarea } from "@/components/ui/textarea"
 import { AnimatedList, AnimatedListItem } from "@/components/ui/animated-list"
 import { AppRoutes } from "@/app/api/routes"
 
-interface PromptEntry {
+interface SkillEntry {
   id: string
   name: string
   description: string | null
-  content: string
+  instructions: string
   created_at: string
   updated_at: string | null
 }
 
-export default function PromptsPage() {
+export default function SkillsPage() {
   const { data: session } = useSession()
-  const [prompts, setPrompts] = useState<PromptEntry[]>([])
+  const [skills, setSkills] = useState<SkillEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
-  const [editingPrompt, setEditingPrompt] = useState<PromptEntry | null>(null)
-  const [previewPrompt, setPreviewPrompt] = useState<PromptEntry | null>(null)
+  const [editingSkill, setEditingSkill] = useState<SkillEntry | null>(null)
+  const [previewSkill, setPreviewSkill] = useState<SkillEntry | null>(null)
 
   // Create form
   const [createName, setCreateName] = useState("")
   const [createDescription, setCreateDescription] = useState("")
-  const [createContent, setCreateContent] = useState("")
+  const [createInstructions, setCreateInstructions] = useState("")
   const [creating, setCreating] = useState(false)
 
   // Edit form
   const [editName, setEditName] = useState("")
   const [editDescription, setEditDescription] = useState("")
-  const [editContent, setEditContent] = useState("")
+  const [editInstructions, setEditInstructions] = useState("")
   const [editing, setEditing] = useState(false)
 
   useEffect(() => {
-    if (session?.accessToken) fetchPrompts()
+    if (session?.accessToken) fetchSkills()
   }, [session?.accessToken])
 
-  const fetchPrompts = async () => {
+  const fetchSkills = async () => {
     setLoading(true)
     try {
-      const res = await fetch(AppRoutes.ListPrompts(), {
+      const res = await fetch(AppRoutes.ListSkills(), {
         headers: { Authorization: `Bearer ${session?.accessToken}` },
       })
       if (res.ok) {
         const data = await res.json()
-        setPrompts(data.prompts || [])
+        setSkills(data.skills || [])
       }
     } catch (e) {
-      console.error("Failed to fetch prompts:", e)
+      console.error("Failed to fetch skills:", e)
     } finally {
       setLoading(false)
     }
@@ -75,33 +75,33 @@ export default function PromptsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!createName.trim() || !createContent.trim()) {
-      toast.error("Name and content are required")
+    if (!createName.trim() || !createInstructions.trim()) {
+      toast.error("Name and instructions are required")
       return
     }
     setCreating(true)
     try {
-      const res = await fetch(AppRoutes.CreatePrompt(), {
+      const res = await fetch(AppRoutes.CreateSkill(), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.accessToken}` },
         body: JSON.stringify({
           name: createName.trim(),
           description: createDescription.trim() || null,
-          content: createContent.trim(),
+          instructions: createInstructions.trim(),
         }),
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Failed to create prompt" }))
+        const err = await res.json().catch(() => ({ detail: "Failed to create skill" }))
         throw new Error(err.detail || `HTTP ${res.status}`)
       }
-      toast.success("Prompt saved to vault")
+      toast.success("Skill saved to vault")
       setShowCreateDialog(false)
       setCreateName("")
       setCreateDescription("")
-      setCreateContent("")
-      await fetchPrompts()
+      setCreateInstructions("")
+      await fetchSkills()
     } catch (e: any) {
-      toast.error(e.message || "Failed to create prompt")
+      toast.error(e.message || "Failed to create skill")
     } finally {
       setCreating(false)
     }
@@ -109,32 +109,32 @@ export default function PromptsPage() {
 
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!editingPrompt) return
+    if (!editingSkill) return
     const updates: Record<string, any> = {}
-    if (editName.trim() !== editingPrompt.name) updates.name = editName.trim()
-    if (editDescription !== (editingPrompt.description || "")) updates.description = editDescription.trim() || null
-    if (editContent.trim() !== editingPrompt.content) updates.content = editContent.trim()
+    if (editName.trim() !== editingSkill.name) updates.name = editName.trim()
+    if (editDescription !== (editingSkill.description || "")) updates.description = editDescription.trim() || null
+    if (editInstructions.trim() !== editingSkill.instructions) updates.instructions = editInstructions.trim()
     if (Object.keys(updates).length === 0) {
       toast.error("No changes to save")
       return
     }
     setEditing(true)
     try {
-      const res = await fetch(AppRoutes.UpdatePrompt(editingPrompt.id), {
+      const res = await fetch(AppRoutes.UpdateSkill(editingSkill.id), {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.accessToken}` },
         body: JSON.stringify(updates),
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Failed to update prompt" }))
+        const err = await res.json().catch(() => ({ detail: "Failed to update skill" }))
         throw new Error(err.detail || `HTTP ${res.status}`)
       }
-      toast.success("Prompt updated")
+      toast.success("Skill updated")
       setShowEditDialog(false)
-      setEditingPrompt(null)
-      await fetchPrompts()
+      setEditingSkill(null)
+      await fetchSkills()
     } catch (e: any) {
-      toast.error(e.message || "Failed to update prompt")
+      toast.error(e.message || "Failed to update skill")
     } finally {
       setEditing(false)
     }
@@ -143,33 +143,33 @@ export default function PromptsPage() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return
     try {
-      const res = await fetch(AppRoutes.DeletePrompt(id), {
+      const res = await fetch(AppRoutes.DeleteSkill(id), {
         method: "DELETE",
         headers: { Authorization: `Bearer ${session?.accessToken}` },
       })
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: "Failed to delete prompt" }))
+        const err = await res.json().catch(() => ({ detail: "Failed to delete skill" }))
         throw new Error(err.detail || `HTTP ${res.status}`)
       }
-      toast.success("Prompt deleted")
-      await fetchPrompts()
+      toast.success("Skill deleted")
+      await fetchSkills()
     } catch (e: any) {
-      toast.error(e.message || "Failed to delete prompt")
+      toast.error(e.message || "Failed to delete skill")
     }
   }
 
-  const openEditDialog = (prompt: PromptEntry) => {
-    setEditingPrompt(prompt)
-    setEditName(prompt.name)
-    setEditDescription(prompt.description || "")
-    setEditContent(prompt.content)
+  const openEditDialog = (skill: SkillEntry) => {
+    setEditingSkill(skill)
+    setEditName(skill.name)
+    setEditDescription(skill.description || "")
+    setEditInstructions(skill.instructions)
     setShowEditDialog(true)
   }
 
-  const filteredPrompts = prompts.filter((p) => {
+  const filteredSkills = skills.filter((s) => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
-    return p.name.toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q)
+    return s.name.toLowerCase().includes(q) || (s.description || "").toLowerCase().includes(q)
   })
 
   return (
@@ -178,32 +178,32 @@ export default function PromptsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-muted">
-            <BookMarked className="h-5 w-5 text-muted-foreground" />
+            <Sparkles className="h-5 w-5 text-muted-foreground" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold tracking-tight uppercase">Prompt Vault</h1>
-              <Badge variant="secondary">{prompts.length}</Badge>
+              <h1 className="text-3xl font-bold tracking-tight uppercase">Skills</h1>
+              <Badge variant="secondary">{skills.length}</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              Reusable system prompt templates for your agents
+              Reusable instruction bundles for Claude agents on an Anthropic endpoint
             </p>
           </div>
         </div>
         <Button onClick={() => setShowCreateDialog(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          New Prompt
+          New Skill
         </Button>
       </div>
 
       {/* Search */}
-      {prompts.length > 0 && (
+      {skills.length > 0 && (
         <div className="relative max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search prompts..."
+            placeholder="Search skills..."
             className="w-full pl-9"
           />
         </div>
@@ -214,45 +214,45 @@ export default function PromptsPage() {
         <div className="flex items-center justify-center py-16">
           <div className="flex flex-col items-center gap-3">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-            <p className="text-sm text-muted-foreground">Loading prompts...</p>
+            <p className="text-sm text-muted-foreground">Loading skills...</p>
           </div>
         </div>
-      ) : filteredPrompts.length === 0 ? (
+      ) : filteredSkills.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <BookMarked className="h-10 w-10 text-muted-foreground" />
+          <Sparkles className="h-10 w-10 text-muted-foreground" />
           <div>
             <p className="text-base font-medium">
-              {searchQuery ? "No prompts match your search" : "No prompts saved yet"}
+              {searchQuery ? "No skills match your search" : "No skills saved yet"}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
               {searchQuery
                 ? "Try different keywords"
-                : "Save reusable system prompts to quickly load them when creating agents"}
+                : "Save reusable skill instructions to attach to Claude agents"}
             </p>
           </div>
           {!searchQuery && (
             <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Add your first prompt
+              Add your first skill
             </Button>
           )}
         </div>
       ) : (
         <AnimatedList className="space-y-2">
-          {filteredPrompts.map((prompt) => (
-            <AnimatedListItem key={prompt.id}>
+          {filteredSkills.map((skill) => (
+            <AnimatedListItem key={skill.id}>
               <Card
                 className="group cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => setPreviewPrompt(prompt)}
+                onClick={() => setPreviewSkill(skill)}
               >
                 <CardContent className="flex items-start gap-4 py-3 px-4">
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{prompt.name}</p>
-                    {prompt.description && (
-                      <p className="text-sm text-muted-foreground mt-0.5">{prompt.description}</p>
+                    <p className="font-medium text-sm">{skill.name}</p>
+                    {skill.description && (
+                      <p className="text-sm text-muted-foreground mt-0.5">{skill.description}</p>
                     )}
                     <p className="text-sm text-muted-foreground mt-1.5 line-clamp-2 font-mono">
-                      {prompt.content}
+                      {skill.instructions}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
@@ -260,7 +260,7 @@ export default function PromptsPage() {
                       variant="ghost"
                       size="icon-sm"
                       className="h-8 w-8"
-                      onClick={(e) => { e.stopPropagation(); openEditDialog(prompt) }}
+                      onClick={(e) => { e.stopPropagation(); openEditDialog(skill) }}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -268,7 +268,7 @@ export default function PromptsPage() {
                       variant="ghost"
                       size="icon-sm"
                       className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(prompt.id, prompt.name) }}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(skill.id, skill.name) }}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -281,27 +281,27 @@ export default function PromptsPage() {
       )}
 
       {/* Preview Dialog */}
-      <Dialog open={!!previewPrompt} onOpenChange={(o) => { if (!o) setPreviewPrompt(null) }}>
+      <Dialog open={!!previewSkill} onOpenChange={(o) => { if (!o) setPreviewSkill(null) }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{previewPrompt?.name}</DialogTitle>
-            {previewPrompt?.description && (
-              <DialogDescription>{previewPrompt.description}</DialogDescription>
+            <DialogTitle>{previewSkill?.name}</DialogTitle>
+            {previewSkill?.description && (
+              <DialogDescription>{previewSkill.description}</DialogDescription>
             )}
           </DialogHeader>
           <div className="border rounded-lg p-3 bg-muted max-h-96 overflow-y-auto">
             <pre className="text-sm font-mono whitespace-pre-wrap break-words">
-              {previewPrompt?.content}
+              {previewSkill?.instructions}
             </pre>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => {
-              if (previewPrompt) { openEditDialog(previewPrompt); setPreviewPrompt(null) }
+              if (previewSkill) { openEditDialog(previewSkill); setPreviewSkill(null) }
             }}>
               <Pencil className="h-4 w-4 mr-2" />
               Edit
             </Button>
-            <Button onClick={() => setPreviewPrompt(null)}>Close</Button>
+            <Button onClick={() => setPreviewSkill(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -310,9 +310,10 @@ export default function PromptsPage() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>New Prompt</DialogTitle>
+            <DialogTitle>New Skill</DialogTitle>
             <DialogDescription>
-              Save a reusable system prompt to your vault.
+              Save a reusable skill to your vault. Skills are only applied to agents using a Claude
+              model on an Anthropic endpoint.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
@@ -322,7 +323,7 @@ export default function PromptsPage() {
                 id="create-name"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                placeholder="e.g., Customer Support Agent"
+                placeholder="e.g., PDF report generation"
                 required
               />
             </div>
@@ -332,16 +333,16 @@ export default function PromptsPage() {
                 id="create-desc"
                 value={createDescription}
                 onChange={(e) => setCreateDescription(e.target.value)}
-                placeholder="Brief description of this prompt's purpose"
+                placeholder="Short summary shown before the skill is loaded"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="create-content">Prompt Content</Label>
+              <Label htmlFor="create-instructions">Instructions</Label>
               <Textarea
-                id="create-content"
-                value={createContent}
-                onChange={(e) => setCreateContent(e.target.value)}
-                placeholder="You are a helpful AI assistant..."
+                id="create-instructions"
+                value={createInstructions}
+                onChange={(e) => setCreateInstructions(e.target.value)}
+                placeholder="Detailed instructions the model should follow when this skill is relevant..."
                 rows={10}
                 required
               />
@@ -354,7 +355,7 @@ export default function PromptsPage() {
                   setShowCreateDialog(false)
                   setCreateName("")
                   setCreateDescription("")
-                  setCreateContent("")
+                  setCreateInstructions("")
                 }}
               >
                 Cancel
@@ -372,7 +373,7 @@ export default function PromptsPage() {
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit Prompt</DialogTitle>
+            <DialogTitle>Edit Skill</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleEdit} className="space-y-4">
             <div className="space-y-2">
@@ -381,7 +382,7 @@ export default function PromptsPage() {
                 id="edit-name"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                placeholder="Prompt name"
+                placeholder="Skill name"
                 required
               />
             </div>
@@ -391,15 +392,15 @@ export default function PromptsPage() {
                 id="edit-desc"
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
-                placeholder="Brief description"
+                placeholder="Short summary"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-content">Prompt Content</Label>
+              <Label htmlFor="edit-instructions">Instructions</Label>
               <Textarea
-                id="edit-content"
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
+                id="edit-instructions"
+                value={editInstructions}
+                onChange={(e) => setEditInstructions(e.target.value)}
                 rows={10}
                 required
               />
@@ -408,7 +409,7 @@ export default function PromptsPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => { setShowEditDialog(false); setEditingPrompt(null) }}
+                onClick={() => { setShowEditDialog(false); setEditingSkill(null) }}
               >
                 Cancel
               </Button>

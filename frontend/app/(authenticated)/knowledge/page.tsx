@@ -119,7 +119,7 @@ export default function KnowledgePage() {
       <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Knowledge Bases</h1>
+          <h1 className="text-3xl font-bold tracking-tight uppercase">Knowledge Bases</h1>
         </div>
         {canCreateKB && (
           <Button size="sm" className="h-9" onClick={() => setShowCreateDialog(true)}>
@@ -137,7 +137,7 @@ export default function KnowledgePage() {
           </div>
         ) : knowledgeBases.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-60 gap-3 text-center">
-            <BookOpen className="h-10 w-10 text-muted-foreground/40" />
+            <BookOpen className="h-10 w-10 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">No knowledge bases yet.</p>
             <Button size="sm" variant="outline" className="h-13" onClick={() => setShowCreateDialog(true)}>
               <Plus className="h-4 w-4 mr-1.5" />
@@ -154,7 +154,7 @@ export default function KnowledgePage() {
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-sm font-medium leading-snug">{kb.name}</CardTitle>
+                    <CardTitle className="text-base font-semibold leading-snug">{kb.name}</CardTitle>
                     <div className="flex items-center gap-1 shrink-0">
                       {kb.is_shared && (
                         <Badge variant="secondary" className="text-xs gap-1">
@@ -167,20 +167,20 @@ export default function KnowledgePage() {
                 </CardHeader>
                 <CardContent className="pt-0">
                   {kb.description && (
-                    <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{kb.description}</p>
+                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{kb.description}</p>
                   )}
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
                       <FileText className="h-3.5 w-3.5" />
                       <span>{kb.document_count} document{kb.document_count !== 1 ? "s" : ""}</span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <span className="text-xs text-muted-foreground">{formatDate(kb.created_at)}</span>
+                      <span className="text-sm text-muted-foreground">{formatDate(kb.created_at)}</span>
                       {canCreateKB && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation()
                             handleDelete(kb)

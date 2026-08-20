@@ -30,7 +30,7 @@ def _strip_think_tags(content: str) -> tuple[str, str]:
 
 class OpenAIProvider(BaseLLMProvider):
 
-    def __init__(self, api_key=None, base_url=None, model_id="gpt-4o", config=None):
+    def __init__(self, api_key=None, base_url=None, model_id="gpt-5.5", config=None):
         super().__init__(api_key, base_url or "https://api.openai.com/", model_id, config)
         self._tool_name_map: dict[str, str] = {}  # sanitized_name -> original_name
 

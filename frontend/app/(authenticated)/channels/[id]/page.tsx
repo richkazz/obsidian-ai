@@ -271,7 +271,7 @@ function VoiceCloneDialog({ open, onOpenChange, channelId, onSuccess }: VoiceClo
                   <button
                     type="button"
                     className="text-sm text-violet-600 hover:underline"
-                    onClick={() => setRefText(VOICE_GUIDE_SCRIPT.replace(/\[your name\]/g, ""))}
+                    onClick={() => setRefText(voiceScript.replace(/\[your name\]/g, ""))}
                   >
                     Use guide script as transcript
                   </button>
@@ -566,15 +566,15 @@ export default function ChannelDetailPage() {
   )
 
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <div className="max-w-2xl mx-auto space-y-6">
+    <div className="h-full overflow-y-auto p-8 w-full space-y-8">
+      <div className="max-w-3xl space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push("/channels")}>
+          <Button variant="ghost" size="icon" onClick={() => router.push("/channels")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex-1 flex items-center gap-2">
-            <h1 className="text-lg font-semibold">{channel.name}</h1>
+          <div className="flex-1 flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">{channel.name}</h1>
             <StatusBadge status={channel.status} />
           </div>
         </div>
@@ -583,8 +583,8 @@ export default function ChannelDetailPage() {
         <div className="rounded-lg border p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Connection</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="text-base font-semibold">Connection</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
                 {channel.wa_phone ? `Linked to ${channel.wa_phone}` : "Not linked to a phone number yet"}
               </p>
             </div>
@@ -612,11 +612,11 @@ export default function ChannelDetailPage() {
               )}
               {qrDataUrl && (
                 <>
-                  <p className="text-xs text-muted-foreground">Open WhatsApp → Linked Devices → Link a device</p>
+                  <p className="text-sm text-muted-foreground">Open WhatsApp → Linked Devices → Link a device</p>
                   <div className="rounded-xl border bg-white p-3 shadow-sm">
                     <img src={qrDataUrl} alt="WhatsApp QR code" width={280} height={280} className="block" />
                   </div>
-                  <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={startQRStream}>
+                  <Button variant="ghost" size="sm" className="gap-1.5 text-sm" onClick={startQRStream}>
                     <RefreshCw className="h-3 w-3" /> Refresh QR
                   </Button>
                 </>
@@ -629,7 +629,7 @@ export default function ChannelDetailPage() {
 
         {/* Settings */}
         <div className="space-y-5">
-          <p className="text-sm font-medium">Channel Settings</p>
+          <p className="text-base font-semibold">Channel Settings</p>
 
           <div className="space-y-1.5">
             <Label>Name</Label>
@@ -654,8 +654,8 @@ export default function ChannelDetailPage() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Contact whitelist</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Restrict which contacts this channel responds to.</p>
+                <p className="text-base font-semibold">Contact whitelist</p>
+                <p className="text-sm text-muted-foreground mt-0.5">Restrict which contacts this channel responds to.</p>
               </div>
               <Button variant={allowAll ? "default" : "outline"} size="sm" className="text-xs h-7" onClick={() => setAllowAll(!allowAll)}>
                 {allowAll ? "Allow all" : "Whitelist only"}
@@ -692,8 +692,8 @@ export default function ChannelDetailPage() {
               <div className="flex items-center gap-2">
                 <Mic className="h-4 w-4 text-muted-foreground" />
                 <div>
-                  <p className="text-sm font-medium">Voice replies</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Reply with a generated voice note.</p>
+                  <p className="text-base font-semibold">Voice replies</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">Reply with a generated voice note.</p>
                 </div>
               </div>
               <Button variant={voiceReplyEnabled ? "default" : "outline"} size="sm" className="text-xs h-7" onClick={() => setVoiceReplyEnabled((v) => !v)}>

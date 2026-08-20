@@ -169,7 +169,7 @@ export function Sidebar() {
 
       <div className="flex flex-col h-full w-88 min-w-0 bg-sidebar text-sidebar-foreground overflow-hidden">
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-5 p-4">
             <EndpointConfig
               onAddProvider={() => { setEditingProvider(null); setProviderDialogOpen(true) }}
               onEditProvider={permissions.manage_providers ? handleEditProvider : undefined}

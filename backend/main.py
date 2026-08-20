@@ -46,13 +46,14 @@ from routers.sandbox_router import router as sandbox_router
 from routers.analytics_router import router as analytics_router
 from routers.whatsapp_router import router as whatsapp_router
 from routers.prompt_vault_router import router as prompt_vault_router
+from routers.skills_router import router as skills_router
 
 if DATABASE_TYPE == "mongo":
     from database_mongo import connect_to_mongo, close_mongo_connection, get_database
     from models_mongo import (
         UserCollection, APIClientCollection, LLMProviderCollection,
         AgentCollection, TeamCollection, WorkflowCollection, WorkflowRunCollection,
-        SessionCollection, MessageCollection, ToolDefinitionCollection, MCPServerCollection,
+        SessionCollection, MessageCollection, ToolDefinitionCollection, SkillCollection, MCPServerCollection,
         UserSecretCollection, FileAttachmentCollection,
         KnowledgeBaseCollection, KBDocumentCollection,
         WorkflowScheduleCollection, HITLApprovalCollection,
@@ -224,6 +225,15 @@ def _run_sqlite_migrations(engine):
         except Exception:
             conn.rollback()
 
+        # Add skill_ids_json to agents if missing
+        try:
+            conn.execute(sqlalchemy.text(
+                "ALTER TABLE agents ADD COLUMN skill_ids_json TEXT"
+            ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # Add total_input_tokens to sessions if missing
         try:
             conn.execute(sqlalchemy.text(
@@ -293,6 +303,36 @@ def _run_sqlite_migrations(engine):
             conn.execute(sqlalchemy.text(
                 "ALTER TABLE tool_proposals ADD COLUMN target_tool_id INTEGER"
             ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Deactivate pre-existing duplicate-named tool_definitions (same user_id + name,
+        # both active) before enforcing uniqueness, keeping the oldest row of each group.
+        try:
+            conn.execute(sqlalchemy.text("""
+                UPDATE tool_definitions
+                SET is_active = 0
+                WHERE is_active = 1
+                  AND id NOT IN (
+                    SELECT MIN(id) FROM tool_definitions
+                    WHERE is_active = 1
+                    GROUP BY user_id, name
+                  )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Enforce one active tool name per user going forward. A plain UNIQUE(user_id, name)
+        # index can't be used because rows are soft-deleted (is_active) rather than removed,
+        # so we scope the uniqueness to active rows only via a partial index.
+        try:
+            conn.execute(sqlalchemy.text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_tool_definitions_user_name_active
+                ON tool_definitions (user_id, name)
+                WHERE is_active = 1
+            """))
             conn.commit()
         except Exception:
             conn.rollback()
@@ -894,6 +934,7 @@ async def lifespan(app: FastAPI):
         await SessionCollection.create_indexes(db)
         await MessageCollection.create_indexes(db)
         await ToolDefinitionCollection.create_indexes(db)
+        await SkillCollection.create_indexes(db)
         await MCPServerCollection.create_indexes(db)
         await UserSecretCollection.create_indexes(db)
         await FileAttachmentCollection.create_indexes(db)
@@ -998,6 +1039,7 @@ app.include_router(sandbox_router)
 app.include_router(analytics_router)
 app.include_router(whatsapp_router)
 app.include_router(prompt_vault_router)
+app.include_router(skills_router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -166,15 +166,15 @@ export default function HomePage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 w-full max-w-6xl mx-auto space-y-8">
+    <div className="h-full overflow-y-auto p-8 w-full space-y-8">
       {/* Welcome */}
-      <h1 className="text-2xl font-bold tracking-tight uppercase">
+      <h1 className="text-3xl font-bold tracking-tight uppercase">
         Welcome {session?.user?.name || "back"}
       </h1>
 
       {/* Explore */}
       <section>
-        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+        <h2 className="text-xs font-semibold text-foreground/70 uppercase tracking-wider mb-3">
           Explore
         </h2>
         <AnimatedList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -185,14 +185,14 @@ export default function HomePage() {
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <card.icon className="h-4 w-4 text-muted-foreground" />
-                        <CardTitle className="text-sm">{card.title}</CardTitle>
+                        <card.icon className="h-5 w-5 text-muted-foreground" />
+                        <CardTitle className="text-base">{card.title}</CardTitle>
                       </div>
-                      <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-xs text-muted-foreground">{card.description}</p>
+                    <p className="text-sm text-muted-foreground">{card.description}</p>
                   </CardContent>
                 </Card>
               </Link>
@@ -205,7 +205,7 @@ export default function HomePage() {
       <section>
         <button
           onClick={() => setAgentsOpen(!agentsOpen)}
-          className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
+          className="flex items-center gap-1 text-xs font-semibold text-foreground/70 uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
         >
           {agentsOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           Agents
@@ -299,7 +299,7 @@ export default function HomePage() {
       <section>
         <button
           onClick={() => setTeamsOpen(!teamsOpen)}
-          className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
+          className="flex items-center gap-1 text-xs font-semibold text-foreground/70 uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
         >
           {teamsOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           Teams
@@ -386,7 +386,7 @@ export default function HomePage() {
       <section>
         <button
           onClick={() => setWorkflowsOpen(!workflowsOpen)}
-          className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
+          className="flex items-center gap-1 text-xs font-semibold text-foreground/70 uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
         >
           {workflowsOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           Workflows

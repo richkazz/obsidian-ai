@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { useState } from "react"
 import Logo from "../ui/logo"
 const navLinks: { label: string; href: string }[] = []
@@ -55,6 +56,7 @@ export function Header() {
 
         {/* Desktop Actions */}
         <div className="hidden items-center gap-3 md:flex">
+          <ThemeToggle />
           {session ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -105,14 +107,16 @@ export function Header() {
         </div>
 
         {/* Mobile Toggle */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="md:hidden"
-          onClick={() => setMobileOpen(!mobileOpen)}
-        >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </Button>
+        <div className="flex items-center gap-1 md:hidden">
+          <ThemeToggle />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </Button>
+        </div>
       </nav>
 
       {/* Mobile Menu */}

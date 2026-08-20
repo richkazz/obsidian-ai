@@ -252,7 +252,7 @@ export function TracePanel({ open, onOpenChange, sessionId, workflowRunId }: Tra
                   <RoundGroup
                     key={group.round}
                     group={group}
-                    showDividers={showDividers && i > 0}
+                    showDivider={showDividers && i > 0}
                   />
                 ))}
               </div>

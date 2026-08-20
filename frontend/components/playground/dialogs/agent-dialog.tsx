@@ -23,8 +23,8 @@ import {
 import Link from "next/link"
 import { apiClient } from "@/lib/api-client"
 import { usePlaygroundStore } from "@/stores/playground-store"
-import type { Agent, ToolDefinition, MCPServer, KnowledgeBase, AgentMemory, AgentVersion, AgentConfigSnapshot, OptimizationRun, EvalSuite, PromptVaultEntry } from "@/types/playground"
-import { Loader2, CheckCircle2, Circle, Server, BookOpen, ExternalLink, ShieldAlert, Brain, Trash2, Wrench, Sparkles, History, RotateCcw, ChevronDown, ChevronRight, Zap, CheckCheck, X, Terminal, Play, Square, BookMarked } from "lucide-react"
+import type { Agent, ToolDefinition, MCPServer, KnowledgeBase, AgentMemory, AgentVersion, AgentConfigSnapshot, OptimizationRun, EvalSuite, PromptVaultEntry, Skill } from "@/types/playground"
+import { Loader2, CheckCircle2, Circle, Server, BookOpen, ExternalLink, ShieldAlert, Brain, Trash2, Wrench, Sparkles, History, RotateCcw, ChevronDown, ChevronRight, Zap, CheckCheck, X, Terminal, Play, Square, BookMarked, GraduationCap } from "lucide-react"
 import { AppRoutes } from "@/app/api/routes"
 
 // ─── Version diff helpers ────────────────────────────────────────────────────
@@ -217,6 +217,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
   const [selectedTools, setSelectedTools] = useState<string[]>([])
   const [selectedMCPServers, setSelectedMCPServers] = useState<string[]>([])
   const [selectedKBs, setSelectedKBs] = useState<string[]>([])
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([])
   const [hitlTools, setHitlTools] = useState<string[]>([])
   const [allowToolCreation, setAllowToolCreation] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(true)
@@ -226,6 +227,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
   const [availableTools, setAvailableTools] = useState<ToolDefinition[]>([])
   const [availableMCPServers, setAvailableMCPServers] = useState<MCPServer[]>([])
   const [availableKBs, setAvailableKBs] = useState<KnowledgeBase[]>([])
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [memories, setMemories] = useState<AgentMemory[]>([])
@@ -267,6 +269,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
     apiClient.listTools().then(setAvailableTools).catch(() => {})
     apiClient.listMCPServers().then(setAvailableMCPServers).catch(() => {})
     apiClient.listKnowledgeBases().then(setAvailableKBs).catch(() => {})
+    apiClient.listSkills().then(setAvailableSkills).catch(() => {})
 
     // Load eval suites for optimizer selector
     apiClient.listEvalSuites().then(setEvalSuites).catch(() => {})
@@ -280,6 +283,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
       setSelectedTools(agent.tools || [])
       setSelectedMCPServers(agent.mcp_server_ids || [])
       setSelectedKBs(agent.knowledge_base_ids || [])
+      setSelectedSkills(agent.skill_ids || [])
       setHitlTools(agent.hitl_confirmation_tools || [])
       setAllowToolCreation(agent.allow_tool_creation ?? false)
       setMemoryEnabled(agent.memory_enabled ?? true)
@@ -329,6 +333,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
           tools: selectedTools,
           mcp_server_ids: selectedMCPServers,
           knowledge_base_ids: selectedKBs,
+          skill_ids: selectedSkills,
           hitl_confirmation_tools: hitlTools.length > 0 ? hitlTools : undefined,
           allow_tool_creation: allowToolCreation,
           memory_enabled: memoryEnabled,
@@ -347,6 +352,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
           tools: selectedTools.length > 0 ? selectedTools : undefined,
           mcp_server_ids: selectedMCPServers.length > 0 ? selectedMCPServers : undefined,
           knowledge_base_ids: selectedKBs.length > 0 ? selectedKBs : undefined,
+          skill_ids: selectedSkills.length > 0 ? selectedSkills : undefined,
           hitl_confirmation_tools: hitlTools.length > 0 ? hitlTools : undefined,
           allow_tool_creation: allowToolCreation,
           memory_enabled: memoryEnabled,
@@ -412,6 +418,14 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
     )
   }
 
+  const toggleSkill = (skillId: string) => {
+    setSelectedSkills((prev) =>
+      prev.includes(skillId)
+        ? prev.filter((s) => s !== skillId)
+        : [...prev, skillId]
+    )
+  }
+
   const toggleHitlTool = (toolName: string) => {
     setHitlTools((prev) =>
       prev.includes(toolName)
@@ -429,6 +443,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
     setSelectedTools([])
     setSelectedMCPServers([])
     setSelectedKBs([])
+    setSelectedSkills([])
     setHitlTools([])
     setAllowToolCreation(false)
     setMemoryEnabled(true)
@@ -667,6 +682,10 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
     }
   }
 
+  const isClaudeAnthropic =
+    providers.find((p) => p.id === providerId)?.provider_type === "anthropic" &&
+    modelId.trim().toLowerCase().startsWith("claude")
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-150 max-h-[85vh] overflow-y-auto">
@@ -735,14 +754,14 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
               onChange={(e) => setModelId(e.target.value)}
               placeholder={
                 providers.find((p) => p.id === providerId)?.provider_type === "anthropic"
-                  ? "e.g. claude-sonnet-4-6"
+                  ? "e.g. claude-sonnet-5"
                   : providers.find((p) => p.id === providerId)?.provider_type === "google"
-                  ? "e.g. gemini-2.0-flash"
+                  ? "e.g. gemini-3.1-pro"
                   : providers.find((p) => p.id === providerId)?.provider_type === "ollama"
                   ? "e.g. llama3"
                   : providers.find((p) => p.id === providerId)?.provider_type === "openrouter"
-                  ? "e.g. openai/gpt-4o"
-                  : "e.g. gpt-4o"
+                  ? "e.g. openai/gpt-5.5"
+                  : "e.g. gpt-5.5"
               }
             />
           </div>
@@ -968,6 +987,56 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
                           {kb.document_count} document{kb.document_count !== 1 ? "s" : ""}
                           {kb.is_shared ? " · Shared" : ""}
                         </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Skills Section */}
+          <div className="grid gap-2">
+            <Label className="flex items-center gap-1.5">
+              <GraduationCap className="h-3.5 w-3.5" />
+              Skills
+            </Label>
+            {!isClaudeAnthropic ? (
+              <p className="text-xs text-muted-foreground">
+                Skills are only available for Claude agents on an Anthropic endpoint. Select an Anthropic provider and a model ID starting with "claude" to enable this section.
+              </p>
+            ) : availableSkills.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No skills available.{" "}
+                <Link href="/skills" className="underline hover:text-foreground inline-flex items-center gap-0.5">
+                  Create one
+                  <ExternalLink className="h-3 w-3" />
+                </Link>{" "}
+                to give this agent reusable capabilities.
+              </p>
+            ) : (
+              <div className="space-y-1 max-h-40 overflow-y-auto rounded-md border border-border p-2">
+                {availableSkills.map((skill) => {
+                  const isEnabled = selectedSkills.includes(skill.id)
+                  return (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      onClick={() => toggleSkill(skill.id)}
+                      className="w-full flex items-start gap-2 p-2 rounded text-xs hover:bg-muted/50 transition-colors text-left"
+                    >
+                      <div className="pt-0.5">
+                        {isEnabled ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                        ) : (
+                          <Circle className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium">{skill.name}</div>
+                        {skill.description && (
+                          <div className="text-muted-foreground truncate">{skill.description}</div>
+                        )}
                       </div>
                     </button>
                   )

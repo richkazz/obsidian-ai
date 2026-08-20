@@ -23,8 +23,8 @@ export default function GuestPage() {
 
   if (status === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
-        <p>Loading...</p>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Loading...</p>
       </div>
     );
   }
@@ -34,20 +34,20 @@ export default function GuestPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto flex items-center justify-center">
+    <div className="h-full overflow-y-auto p-8 w-full flex items-center justify-center">
       <main className="flex w-full max-w-3xl flex-col items-center gap-8 py-32 px-16">
         <div className="text-center">
-          <h1 className="text-3xl font-bold">Guest Page</h1>
-          <p className="mt-2">
+          <h1 className="text-3xl font-bold tracking-tight uppercase">Guest Page</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             Welcome, {session?.user?.name ?? 'Guest'}!
           </p>
-          <p className="mt-1 text-sm">
-            Role: <span className="font-semibold">{userRole}</span>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Role: <span className="font-semibold text-foreground">{userRole}</span>
           </p>
         </div>
 
         <div className="w-full rounded-lg border text-center p-6">
-          <p className="mt-2">
+          <p className="text-sm text-muted-foreground">
             This page is accessible to users with guest or admin roles.
           </p>
         </div>

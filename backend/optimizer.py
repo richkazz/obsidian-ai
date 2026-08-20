@@ -328,7 +328,8 @@ async def _run_optimization_sqlite(
         _update(run_id, status="analyzing")
 
         sessions = db.query(ChatSession).filter(
-            ChatSession.agent_id == agent_id,
+            ChatSession.entity_type == "agent",
+            ChatSession.entity_id == agent_id,
             ChatSession.user_id == user_id,
         ).order_by(ChatSession.created_at.desc()).limit(max_traces).all()
 

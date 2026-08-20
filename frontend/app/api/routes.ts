@@ -210,4 +210,11 @@ export const AppRoutes = {
     // Optimizer Vault Actions
     OptimizerSaveToVault    : (runId: string) => `/api/optimizer/runs/${runId}/save-to-vault`,
     OptimizerUpdateVault    : (runId: string) => `/api/optimizer/runs/${runId}/update-vault`,
+
+    // Skills Vault
+    ListSkills              : () => "/api/skills",
+    CreateSkill             : () => "/api/skills",
+    GetSkill                : (id: string) => `/api/skills/${id}`,
+    UpdateSkill             : (id: string) => `/api/skills/${id}`,
+    DeleteSkill             : (id: string) => `/api/skills/${id}`,
 }

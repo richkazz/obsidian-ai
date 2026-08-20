@@ -4,7 +4,7 @@
 
 ### Open-Source AI Agent Management & Orchestration Platform
 
-Build, deploy, and orchestrate AI agents, multi-agent teams, and automated workflows — all from one unified control plane. Supports OpenAI, Anthropic, Google Gemini, Ollama, OpenRouter, and any OpenAI-compatible endpoint.
+Build, deploy, and orchestrate AI agents, multi-agent teams, and automated workflows - all from one unified control plane. Supports OpenAI, Anthropic, Google Gemini, Ollama, OpenRouter, and any OpenAI-compatible endpoint.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/sup3rus3r/obsidian-ai?style=social)](https://github.com/sup3rus3r/obsidian-ai/stargazers)
@@ -49,6 +49,7 @@ Build, deploy, and orchestrate AI agents, multi-agent teams, and automated workf
   - [Eval Harness & Regression Testing](#eval-harness--regression-testing)
   - [Prompt Auto-Optimizer](#prompt-auto-optimizer)
   - [Prompt Vault](#prompt-vault)
+  - [Skills Vault](#skills-vault)
   - [WhatsApp Channel Integration](#whatsapp-channel-integration)
   - [Automatic Context Management](#automatic-context-management)
   - [Session History & Execution Traces](#session-history--execution-traces)
@@ -77,16 +78,17 @@ Build, deploy, and orchestrate AI agents, multi-agent teams, and automated workf
 ---
 
 ![image](docs/images/main.png)
+![image](docs/images/inside.png)
 
 ## Why Obsidian AI?
 
-Most AI agent frameworks are code-only libraries that require deep programming knowledge. **Obsidian AI** provides a complete visual interface for building, managing, and running AI agents — no SDK glue code required.
+Most AI agent frameworks are code-only libraries that require deep programming knowledge. **Obsidian AI** provides a complete visual interface for building, managing, and running AI agents - no SDK glue code required.
 
-- **No vendor lock-in** — Swap between OpenAI, Anthropic, Google, Ollama, or any OpenAI-compatible provider without changing a single line of agent configuration.
-- **Visual orchestration** — Create multi-agent teams, sequential pipelines, and parallel DAG workflows from a drag-and-drop canvas. No YAML, no code, no boilerplate.
-- **Production-ready security** — JWT auth, TOTP 2FA, AES end-to-end encryption, Fernet secrets vault, role-based access control, and rate limiting out of the box.
-- **Self-hosted & open-source** — Run entirely on your own infrastructure. Your data never leaves your servers.
-- **MCP-native** — First-class Model Context Protocol support for connecting external tools and services to your agents.
+- **No vendor lock-in** - Swap between OpenAI, Anthropic, Google, Ollama, or any OpenAI-compatible provider without changing a single line of agent configuration.
+- **Visual orchestration** - Create multi-agent teams, sequential pipelines, and parallel DAG workflows from a drag-and-drop canvas. No YAML, no code, no boilerplate.
+- **Production-ready security** - JWT auth, TOTP 2FA, AES end-to-end encryption, Fernet secrets vault, role-based access control, and rate limiting out of the box.
+- **Self-hosted & open-source** - Run entirely on your own infrastructure. Your data never leaves your servers.
+- **MCP-native** - First-class Model Context Protocol support for connecting external tools and services to your agents.
 
 ---
 
@@ -98,12 +100,12 @@ Connect to any major LLM provider from a single interface. Add providers with en
 
 | Provider | Models | Type |
 |----------|--------|------|
-| **OpenAI** | GPT-4.1, GPT-4.1 mini, GPT-4.1 nano, o3, o4-mini, GPT-5, GPT-5 mini | Cloud |
-| **Anthropic** | Claude Opus 4.6, Claude Sonnet 4.6, Claude Haiku 4.5 | Cloud |
-| **Google** | Gemini 2.5 Pro, Gemini 2.5 Flash, Gemini 3 Flash (Preview) | Cloud |
-| **Ollama** | Llama, Mistral, Qwen, Phi, DeepSeek — any local model | Local |
+| **OpenAI** | GPT-5.5, GPT-4.1, GPT-4.1 mini, GPT-4.1 nano, o3, o4-mini | Cloud |
+| **Anthropic** | Claude Fable 5, Claude Opus 4.8/4.7, Claude Sonnet 5, Claude Haiku 4.5 | Cloud |
+| **Google** | Gemini 3.1 Pro, Gemini 3.7/3.6 Flash, Gemini 3.5 Flash Lite, Gemini 2.5 Pro/Flash | Cloud |
+| **Ollama** | Llama, Mistral, Qwen, Phi, DeepSeek - any local model | Local |
 | **OpenRouter** | Access 100+ models through one API key | Cloud |
-| **Custom** | Any OpenAI-compatible endpoint (LM Studio, vLLM, etc.) | Self-hosted |
+| **Custom** | Any OpenAI-compatible endpoint (xAI Grok, LM Studio, vLLM, etc.) | Self-hosted |
 
 ---
 
@@ -111,15 +113,15 @@ Connect to any major LLM provider from a single interface. Add providers with en
 
 Create AI agents with custom system prompts, model selection, tool attachments, and MCP server connections. Each agent is fully configurable and can be used standalone or as part of a team or workflow.
 
-- **Custom system prompts** — Define agent behavior, personality, and instructions
-- **Per-agent model selection** — Pick the right model for each agent's task
-- **Tool attachment** — Equip agents with HTTP, Python, or built-in tools
-- **MCP server binding** — Connect agents to external services via MCP
-- **Knowledge base attachment** — Assign one or more knowledge bases for persistent RAG context
-- **Long-term memory** — Each agent builds a persistent memory of each user across sessions
-- **Dynamic tool creation** — Enable agents to propose and create new tools mid-conversation
-- **Human-in-the-loop overrides** — Define per-agent tool approval requirements independently of tool-level flags
-- **Import / Export** — Share agent configurations as portable JSON files across instances
+- **Custom system prompts** - Define agent behavior, personality, and instructions
+- **Per-agent model selection** - Pick the right model for each agent's task
+- **Tool attachment** - Equip agents with HTTP, Python, or built-in tools
+- **MCP server binding** - Connect agents to external services via MCP
+- **Knowledge base attachment** - Assign one or more knowledge bases for persistent RAG context
+- **Long-term memory** - Each agent builds a persistent memory of each user across sessions
+- **Dynamic tool creation** - Enable agents to propose and create new tools mid-conversation
+- **Human-in-the-loop overrides** - Define per-agent tool approval requirements independently of tool-level flags
+- **Import / Export** - Share agent configurations as portable JSON files across instances
 
 ---
 
@@ -139,16 +141,16 @@ Combine multiple agents into coordinated teams for complex tasks. Choose from th
 
 Define multi-step workflows where each step is handled by a specific agent. Build sequential pipelines or design complex parallel graphs with the visual DAG editor. Monitor execution in real-time with per-node status tracking.
 
-- **Visual DAG editor** — Drag-and-drop canvas (`@xyflow/react`) for building non-linear agent pipelines; connect nodes with edges, configure each node from a side-panel
-- **Parallel execution** — Nodes without dependency relationships run concurrently via an async topological executor; fan-out and fan-join patterns supported natively
-- **Sequential pipeline** — Chain agents in order; each step receives the previous step's output
-- **Per-step agent assignment** — Use different agents (and models) for each step
-- **Live run visualization** — Node colors pulse in real-time as the graph executes (gray → blue pulsing → green/red) driven by SSE events keyed by node ID
-- **Cycle detection** — DFS topological sort validates the graph at save time; cyclic graphs are rejected before they can be executed
-- **Layout persistence** — Node positions are stored with the workflow definition and restored when the editor re-opens
-- **Run history** — Track past executions with status (pending, running, completed, failed)
-- **Reusable definitions** — Save workflow templates and run them on demand or on a schedule
-- **Cron scheduling** — Schedule workflows to run automatically using standard cron expressions
+- **Visual DAG editor** - Drag-and-drop canvas (`@xyflow/react`) for building non-linear agent pipelines; connect nodes with edges, configure each node from a side-panel
+- **Parallel execution** - Nodes without dependency relationships run concurrently via an async topological executor; fan-out and fan-join patterns supported natively
+- **Sequential pipeline** - Chain agents in order; each step receives the previous step's output
+- **Per-step agent assignment** - Use different agents (and models) for each step
+- **Live run visualization** - Node colors pulse in real-time as the graph executes (gray → blue pulsing → green/red) driven by SSE events keyed by node ID
+- **Cycle detection** - DFS topological sort validates the graph at save time; cyclic graphs are rejected before they can be executed
+- **Layout persistence** - Node positions are stored with the workflow definition and restored when the editor re-opens
+- **Run history** - Track past executions with status (pending, running, completed, failed)
+- **Reusable definitions** - Save workflow templates and run them on demand or on a schedule
+- **Cron scheduling** - Schedule workflows to run automatically using standard cron expressions
 
 ---
 
@@ -156,29 +158,29 @@ Define multi-step workflows where each step is handled by a specific agent. Buil
 
 A full-featured chat interface for interacting with agents, teams, and workflows. Powered by Server-Sent Events (SSE) for real-time streaming.
 
-- **Live streaming responses** — Token-by-token output via SSE
-- **Tool execution visualization** — See tool calls, parameters, and results inline
-- **Chain-of-thought reasoning** — View agent thinking steps for supported models
-- **File attachments** — Send images, PDFs, Word docs, markdown, and text files directly in chat
-- **Prompt suggestions** — Quick-start prompts to get conversations going
-- **Markdown rendering** — GitHub-flavored markdown with syntax highlighting (Shiki), math (KaTeX), and Mermaid diagrams
-- **Agentic tool loops** — Agents can execute up to 10 rounds of tool calls per response
+- **Live streaming responses** - Token-by-token output via SSE
+- **Tool execution visualization** - See tool calls, parameters, and results inline
+- **Chain-of-thought reasoning** - View agent thinking steps for supported models
+- **File attachments** - Send images, PDFs, Word docs, markdown, and text files directly in chat
+- **Prompt suggestions** - Quick-start prompts to get conversations going
+- **Markdown rendering** - GitHub-flavored markdown with syntax highlighting (Shiki), math (KaTeX), and Mermaid diagrams
+- **Agentic tool loops** - Agents can execute up to 10 rounds of tool calls per response
 
 ---
 
 ### Artifacts
 
-When an agent produces substantial standalone content — an HTML page, a code file, an SVG diagram, a JSON payload — it wraps it in a named **artifact** instead of a code block. Artifacts open in a persistent side panel alongside the chat.
+When an agent produces substantial standalone content - an HTML page, a code file, an SVG diagram, a JSON payload - it wraps it in a named **artifact** instead of a code block. Artifacts open in a persistent side panel alongside the chat.
 
-- **Rich preview** — HTML, JSX, TSX, SVG, and CSS artifacts render live in a sandboxed iframe
-- **Syntax highlighting** — Code view uses Shiki (github-dark theme) for all supported languages
-- **In-panel editing** — Switch to Edit mode to modify artifact content directly; changes reflect instantly in the preview
-- **Multiple artifacts** — Each session can accumulate multiple artifacts shown as tabs in the panel
-- **Copy & download** — One-click copy to clipboard or download with the correct file extension
-- **Fullscreen mode** — Expand the artifact panel to fill the entire screen
-- **Inline reference chips** — Each artifact appears as a clickable chip in the chat message; the raw XML tag is never shown to the user
-- **Live streaming** — The panel opens as soon as the agent starts writing an artifact; an animated tab shows the title while it's being written
-- **In-place editing** — When the agent modifies an existing artifact, the tab updates in place rather than opening a new one
+- **Rich preview** - HTML, JSX, TSX, SVG, and CSS artifacts render live in a sandboxed iframe
+- **Syntax highlighting** - Code view uses Shiki (github-dark theme) for all supported languages
+- **In-panel editing** - Switch to Edit mode to modify artifact content directly; changes reflect instantly in the preview
+- **Multiple artifacts** - Each session can accumulate multiple artifacts shown as tabs in the panel
+- **Copy & download** - One-click copy to clipboard or download with the correct file extension
+- **Fullscreen mode** - Expand the artifact panel to fill the entire screen
+- **Inline reference chips** - Each artifact appears as a clickable chip in the chat message; the raw XML tag is never shown to the user
+- **Live streaming** - The panel opens as soon as the agent starts writing an artifact; an animated tab shows the title while it's being written
+- **In-place editing** - When the agent modifies an existing artifact, the tab updates in place rather than opening a new one
 
 **Artifact tag format:**
 
@@ -208,14 +210,14 @@ Equip agents with tools using pre-built templates or custom definitions. Tools a
 
 ### Dynamic Tool Creation
 
-Agents can propose and create new tools mid-conversation — no pre-configuration needed. Enable the **Allow Tool Creation** toggle on any agent, then ask it to build a capability it doesn't have. The agent designs the tool, and a review card appears inline in the chat.
+Agents can propose and create new tools mid-conversation - no pre-configuration needed. Enable the **Allow Tool Creation** toggle on any agent, then ask it to build a capability it doesn't have. The agent designs the tool, and a review card appears inline in the chat.
 
-- **Opt-in per agent** — Only agents with the toggle enabled can propose tools
-- **Two handler types** — Pure-Python (stdlib only) or HTTP REST endpoint
-- **Inline review card** — Shows tool name, description, handler type, collapsible parameter schema and code
-- **Immediate availability** — Approved tools are usable by the agent in the same session without a page reload
-- **Sidebar auto-refresh** — The tools list updates silently on approval with no disruption to the active chat
-- **Safety timeout** — Proposals are auto-rejected after 10 minutes if left unreviewed
+- **Opt-in per agent** - Only agents with the toggle enabled can propose tools
+- **Two handler types** - Pure-Python (stdlib only) or HTTP REST endpoint
+- **Inline review card** - Shows tool name, description, handler type, collapsible parameter schema and code
+- **Immediate availability** - Approved tools are usable by the agent in the same session without a page reload
+- **Sidebar auto-refresh** - The tools list updates silently on approval with no disruption to the active chat
+- **Safety timeout** - Proposals are auto-rejected after 10 minutes if left unreviewed
 
 ---
 
@@ -223,11 +225,11 @@ Agents can propose and create new tools mid-conversation — no pre-configuratio
 
 Connect external services via the [Model Context Protocol](https://modelcontextprotocol.io/). MCP servers expose tools that agents can discover and use during conversations.
 
-- **Stdio transport** — Run local MCP servers as child processes (Docker, npx, Python, etc.)
-- **SSE transport** — Connect to remote MCP servers over HTTP
-- **Connection testing** — Verify server connectivity and discover available tools before saving
-- **Environment variables** — Pass API keys and configuration to MCP servers securely
-- **Per-agent binding** — Attach specific MCP servers to specific agents
+- **Stdio transport** - Run local MCP servers as child processes (Docker, npx, Python, etc.)
+- **SSE transport** - Connect to remote MCP servers over HTTP
+- **Connection testing** - Verify server connectivity and discover available tools before saving
+- **Environment variables** - Pass API keys and configuration to MCP servers securely
+- **Per-agent binding** - Attach specific MCP servers to specific agents
 
 ---
 
@@ -235,14 +237,14 @@ Connect external services via the [Model Context Protocol](https://modelcontextp
 
 Pause agent execution before sensitive tool calls and require explicit human approval before proceeding. The agent's streaming generator suspends at the flagged tool, surfaces an approval card in the chat, and only resumes based on the user's decision.
 
-- **Tool-level flag** — Enable "Requires human approval" on any tool via the tool creation dialog
-- **Agent-level overrides** — Independently mark tool names in the agent's "Require Approval For" list — triggers HITL even when the tool-level flag is off
-- **MCP tool support** — MCP tools can also be flagged via the agent override list
-- **Inline approval card** — An amber shield card appears in the streaming message with the tool name, formatted arguments, and Approve / Deny buttons
-- **Reconnect safe** — Pending approvals are persisted to the database; reloading the page re-fetches and re-renders the card
-- **Auto-deny on timeout** — Approvals left unanswered for 10 minutes are automatically denied
-- **Server restart recovery** — All stale pending approvals are auto-denied on startup
-- **Zero-polling** — Uses `asyncio.Event` to suspend the generator; the approve/reject HTTP request sets the event, resuming execution with zero busy-waiting
+- **Tool-level flag** - Enable "Requires human approval" on any tool via the tool creation dialog
+- **Agent-level overrides** - Independently mark tool names in the agent's "Require Approval For" list - triggers HITL even when the tool-level flag is off
+- **MCP tool support** - MCP tools can also be flagged via the agent override list
+- **Inline approval card** - An amber shield card appears in the streaming message with the tool name, formatted arguments, and Approve / Deny buttons
+- **Reconnect safe** - Pending approvals are persisted to the database; reloading the page re-fetches and re-renders the card
+- **Auto-deny on timeout** - Approvals left unanswered for 10 minutes are automatically denied
+- **Server restart recovery** - All stale pending approvals are auto-denied on startup
+- **Zero-polling** - Uses `asyncio.Event` to suspend the generator; the approve/reject HTTP request sets the event, resuming execution with zero busy-waiting
 
 ---
 
@@ -252,45 +254,45 @@ Persistent, reusable knowledge bases that can be attached to agents for retrieva
 
 **Knowledge Bases:**
 
-- **Two document types** — Paste text directly, or upload files (PDF, DOCX, TXT, Markdown)
-- **Automatic indexing** — Content is chunked and embedded into a FAISS vector store on upload
-- **Per-agent attachment** — Assign one or more knowledge bases to an agent from the agent dialog
-- **Shared KBs** — Admins can create shared knowledge bases visible to all users
-- **Chat indicators** — A pill badge in the chat bubble shows which KB was used for each response
+- **Two document types** - Paste text directly, or upload files (PDF, DOCX, TXT, Markdown)
+- **Automatic indexing** - Content is chunked and embedded into a FAISS vector store on upload
+- **Per-agent attachment** - Assign one or more knowledge bases to an agent from the agent dialog
+- **Shared KBs** - Admins can create shared knowledge bases visible to all users
+- **Chat indicators** - A pill badge in the chat bubble shows which KB was used for each response
 
 **Session-Level File Attachments:**
 
-- **Supported formats** — PNG, JPG, GIF, WebP, PDF, Word (.docx), Markdown, plain text
-- **Automatic chunking** — Documents are split and indexed for vector search
-- **Per-session indexes** — Each conversation gets its own isolated vector store
-- **Cross-platform** — FAISS on Windows, Leann HNSW on Linux/macOS
+- **Supported formats** - PNG, JPG, GIF, WebP, PDF, Word (.docx), Markdown, plain text
+- **Automatic chunking** - Documents are split and indexed for vector search
+- **Per-session indexes** - Each conversation gets its own isolated vector store
+- **Cross-platform** - FAISS on Windows, Leann HNSW on Linux/macOS
 
 ---
 
 ### Long-Term Agent Memory
 
-Agents remember what matters across conversations. At the start of each new session, a background LLM reflection call distills the previous session into a compact set of durable facts — preferences, project context, decisions, and corrections — which are automatically injected into every future system prompt.
+Agents remember what matters across conversations. At the start of each new session, a background LLM reflection call distills the previous session into a compact set of durable facts - preferences, project context, decisions, and corrections - which are automatically injected into every future system prompt.
 
-- **Model-driven extraction** — The agent's own LLM decides what to remember; no keyword rules or manual tagging required
-- **Four memory categories** — `preference` (how the user likes things), `context` (project/background info), `decision` (agreed-upon choices), `correction` (feedback on agent behaviour)
-- **Zero-latency trigger** — Reflection runs as a background task on the first message of a new session; the user's response is never delayed
-- **Bounded storage** — Maximum 50 memories per agent/user pair; oldest low-confidence facts are evicted automatically when the cap is reached
-- **Key-based deduplication** — If a new fact contradicts an existing memory, it replaces the old one rather than accumulating stale data
-- **Transparent & editable** — Open any agent in edit mode to see all stored memories with category colour-coding; delete individual facts or clear everything with one click
-- **Persistent across restarts** — Memories are stored in the database (`agent_memories` table / MongoDB collection)
+- **Model-driven extraction** - The agent's own LLM decides what to remember; no keyword rules or manual tagging required
+- **Four memory categories** - `preference` (how the user likes things), `context` (project/background info), `decision` (agreed-upon choices), `correction` (feedback on agent behaviour)
+- **Zero-latency trigger** - Reflection runs as a background task on the first message of a new session; the user's response is never delayed
+- **Bounded storage** - Maximum 50 memories per agent/user pair; oldest low-confidence facts are evicted automatically when the cap is reached
+- **Key-based deduplication** - If a new fact contradicts an existing memory, it replaces the old one rather than accumulating stale data
+- **Transparent & editable** - Open any agent in edit mode to see all stored memories with category colour-coding; delete individual facts or clear everything with one click
+- **Persistent across restarts** - Memories are stored in the database (`agent_memories` table / MongoDB collection)
 
 ---
 
 ### Agent Versioning & Rollback
 
-Every time an agent's configuration is saved, the previous version is automatically snapshotted. Browse the full history, inspect diffs, and restore any past configuration — all without ever losing your work.
+Every time an agent's configuration is saved, the previous version is automatically snapshotted. Browse the full history, inspect diffs, and restore any past configuration - all without ever losing your work.
 
-- **Auto-snapshot on save** — A full config snapshot is taken before every update with zero extra clicks
-- **Version history panel** — Expand the "Version History" section in any agent's edit dialog to see a list of all past versions with timestamps and change summaries
-- **Side-by-side diff view** — Click any version to open a two-column diff comparing it to the previous snapshot
-- **One-click rollback** — Restore a previous version; the rollback itself is also versioned so you can undo it too
-- **Safe iteration** — Underpins the Prompt Auto-Optimizer and eval-driven changes; every prompt change is reversible
-- **Automatic pruning** — Versions older than 72 hours are pruned daily (the most recent version is always kept)
+- **Auto-snapshot on save** - A full config snapshot is taken before every update with zero extra clicks
+- **Version history panel** - Expand the "Version History" section in any agent's edit dialog to see a list of all past versions with timestamps and change summaries
+- **Side-by-side diff view** - Click any version to open a two-column diff comparing it to the previous snapshot
+- **One-click rollback** - Restore a previous version; the rollback itself is also versioned so you can undo it too
+- **Safe iteration** - Underpins the Prompt Auto-Optimizer and eval-driven changes; every prompt change is reversible
+- **Automatic pruning** - Versions older than 72 hours are pruned daily (the most recent version is always kept)
 
 ---
 
@@ -298,12 +300,12 @@ Every time an agent's configuration is saved, the previous version is automatica
 
 Define test suites with expected inputs and outputs, run them against any agent configuration, and get scored pass/fail results. Catch quality regressions before they reach users.
 
-- **Test suite builder** — Create named suites with as many test cases as needed; each case has an input, expected output, and a grading method
-- **Three grading methods** — `exact_match` (string equality), `contains` (substring check), `llm_judge` (a secondary LLM call scores the response and explains its reasoning)
-- **Run against any config** — Trigger a run from the Evals page; results are stored and browsable per suite
-- **Live results view** — Expand each test case to see the actual output, expected output, pass/fail badge, and LLM judge reasoning where applicable
-- **Agent-level run history** — See all eval runs across suites for a given agent
-- **Optimizer integration** — The Prompt Auto-Optimizer uses eval suites to validate proposed prompt changes before surfacing them for review
+- **Test suite builder** - Create named suites with as many test cases as needed; each case has an input, expected output, and a grading method
+- **Three grading methods** - `exact_match` (string equality), `contains` (substring check), `llm_judge` (a secondary LLM call scores the response and explains its reasoning)
+- **Run against any config** - Trigger a run from the Evals page; results are stored and browsable per suite
+- **Live results view** - Expand each test case to see the actual output, expected output, pass/fail badge, and LLM judge reasoning where applicable
+- **Agent-level run history** - See all eval runs across suites for a given agent
+- **Optimizer integration** - The Prompt Auto-Optimizer uses eval suites to validate proposed prompt changes before surfacing them for review
 
 **New API endpoints:**
 
@@ -320,17 +322,17 @@ Define test suites with expected inputs and outputs, run them against any agent 
 
 ### Prompt Auto-Optimizer
 
-Automatically analyzes an agent's recent conversation history, identifies recurring failure patterns, and proposes an improved system prompt — with optional validation against an eval suite before you see it.
+Automatically analyzes an agent's recent conversation history, identifies recurring failure patterns, and proposes an improved system prompt - with optional validation against an eval suite before you see it.
 
-- **Trace-driven analysis** — The optimizer collects recent sessions and passes them to an LLM that identifies where the agent underperformed, misunderstood users, or violated its instructions
-- **Failure pattern extraction** — Patterns are categorized by severity (low / medium / high) and displayed as labeled chips so you can see exactly what was wrong
-- **Prompt proposal** — A second LLM call rewrites the system prompt to address the identified patterns while preserving the agent's existing capabilities
-- **Eval validation** — Optionally select an eval suite; the optimizer runs the current and proposed prompts through the suite and shows a before/after score (e.g. baseline 60% → proposed 85%)
-- **Side-by-side diff view** — The current and proposed prompts are shown side-by-side in a fixed-width monospace panel for easy comparison
-- **Accept or reject** — Accepting applies the proposed prompt to the agent (and creates a version snapshot first for safety); rejecting discards it with an optional reason
-- **Past runs list** — All previous optimization runs are listed below the active run panel for reference
-- **Weekly auto-sweep** — APScheduler triggers the optimizer automatically every Monday at 02:00 for all agents that have enough recent traces (configurable minimum)
-- **Requires ≥ 5 sessions** — The optimizer needs enough conversation data to identify meaningful patterns; running it on a fresh agent will report "not enough traces"
+- **Trace-driven analysis** - The optimizer collects recent sessions and passes them to an LLM that identifies where the agent underperformed, misunderstood users, or violated its instructions
+- **Failure pattern extraction** - Patterns are categorized by severity (low / medium / high) and displayed as labeled chips so you can see exactly what was wrong
+- **Prompt proposal** - A second LLM call rewrites the system prompt to address the identified patterns while preserving the agent's existing capabilities
+- **Eval validation** - Optionally select an eval suite; the optimizer runs the current and proposed prompts through the suite and shows a before/after score (e.g. baseline 60% → proposed 85%)
+- **Side-by-side diff view** - The current and proposed prompts are shown side-by-side in a fixed-width monospace panel for easy comparison
+- **Accept or reject** - Accepting applies the proposed prompt to the agent (and creates a version snapshot first for safety); rejecting discards it with an optional reason
+- **Past runs list** - All previous optimization runs are listed below the active run panel for reference
+- **Weekly auto-sweep** - APScheduler triggers the optimizer automatically every Monday at 02:00 for all agents that have enough recent traces (configurable minimum)
+- **Requires ≥ 5 sessions** - The optimizer needs enough conversation data to identify meaningful patterns; running it on a fresh agent will report "not enough traces"
 
 **New API endpoints:**
 
@@ -349,10 +351,22 @@ Automatically analyzes an agent's recent conversation history, identifies recurr
 
 A library for storing and reusing system prompts across agents. Save prompts manually, or push proposed prompts directly from the Prompt Auto-Optimizer without leaving the review flow.
 
-- **Vault page** — Browse, create, edit, and delete saved prompts from a dedicated settings page
-- **Optimizer integration** — Accept an optimizer-proposed prompt directly into the vault (as a new entry or as an update to an existing one) alongside or instead of applying it to the agent
-- **Full CRUD** — Each entry has a name, description, and prompt body
-- **Both databases** — Works identically with SQLite and MongoDB
+- **Vault page** - Browse, create, edit, and delete saved prompts from a dedicated settings page
+- **Optimizer integration** - Accept an optimizer-proposed prompt directly into the vault (as a new entry or as an update to an existing one) alongside or instead of applying it to the agent
+- **Full CRUD** - Each entry has a name, description, and prompt body
+- **Both databases** - Works identically with SQLite and MongoDB
+
+---
+
+### Skills Vault
+
+Reusable **Skills** - named instruction bundles injected into an agent's system prompt when attached, modeled on Anthropic's Agent Skills concept. Only meaningful for Claude models, so they're gated accordingly.
+
+- **Claude-only gating** - The Skills selector in the agent dialog only appears/activates when the agent's provider is Anthropic and its model ID starts with `claude`; updates live as you change either field
+- **Full CRUD** - Create, search, preview, edit, and delete skills from a dedicated vault page (`Vaults → Skills`)
+- **Per-agent attachment** - Attach any number of skills to an agent alongside its Knowledge Bases
+- **Prompt-injection based** - No dependency on Anthropic's beta hosted code-execution container; works with any Claude model on any Anthropic-compatible endpoint
+- **Both databases** - Works identically with SQLite and MongoDB
 
 ---
 
@@ -360,19 +374,19 @@ A library for storing and reusing system prompts across agents. Save prompts man
 
 Connect any agent to a WhatsApp account via QR code scan. No Meta Business account, no API fees, no webhooks required.
 
-- **QR pairing** — Click Connect, scan the QR code with WhatsApp → Linked Devices, and the channel goes live
-- **Per-channel agent** — Route all messages on a channel to a specific agent; change the agent at any time without re-scanning
-- **Contact whitelist** — Restrict which contacts the agent responds to; others receive a custom rejection message or are silently ignored
-- **Session continuity** — Each `(channel, contact)` pair maps to a persistent session; the agent remembers conversation history and applies long-term memory
-- **Voice note transcription** — Incoming voice notes are transcribed locally using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CPU, no cloud STT)
-- **Voice note replies** — Reply with synthesised audio using the multi-backend TTS pipeline (see [Voice Reply Setup](#voice-reply-setup-optional)):
+- **QR pairing** - Click Connect, scan the QR code with WhatsApp → Linked Devices, and the channel goes live
+- **Per-channel agent** - Route all messages on a channel to a specific agent; change the agent at any time without re-scanning
+- **Contact whitelist** - Restrict which contacts the agent responds to; others receive a custom rejection message or are silently ignored
+- **Session continuity** - Each `(channel, contact)` pair maps to a persistent session; the agent remembers conversation history and applies long-term memory
+- **Voice note transcription** - Incoming voice notes are transcribed locally using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CPU, no cloud STT)
+- **Voice note replies** - Reply with synthesised audio using the multi-backend TTS pipeline (see [Voice Reply Setup](#voice-reply-setup-optional)):
   - **Qwen3-TTS** (GPU): 9 preset voices across English, Chinese, Japanese, Korean; or reply in the user's own cloned voice
   - **Pocket TTS** (CPU fallback): 8 voices, CPU-native
   - **Kokoro** (last resort): lightweight CPU fallback
-- **Voice cloning** — Record or upload a voice sample in the channel settings page; the agent replies in the user's voice. Includes a guided in-browser recorder with a phonetically rich script
-- **Per-channel TTS engine** — Choose `auto`, `qwen`, or `classic` per channel
-- **HITL in channels** — Pending approvals surface in the global notification badge in the top bar
-- **Auto-reconnect** — The sidecar reconnects all authenticated channels automatically on startup
+- **Voice cloning** - Record or upload a voice sample in the channel settings page; the agent replies in the user's voice. Includes a guided in-browser recorder with a phonetically rich script
+- **Per-channel TTS engine** - Choose `auto`, `qwen`, or `classic` per channel
+- **HITL in channels** - Pending approvals surface in the global notification badge in the top bar
+- **Auto-reconnect** - The sidecar reconnects all authenticated channels automatically on startup
 
 ---
 
@@ -380,12 +394,12 @@ Connect any agent to a WhatsApp account via QR code scan. No Meta Business accou
 
 When a conversation approaches a model's context limit, the platform automatically compresses older history so sessions can continue indefinitely without hitting token limits or requiring manual intervention.
 
-- **Threshold-based trigger** — Compaction activates at 80% of the model's context window
-- **Recent messages preserved** — The last 10 messages are always kept verbatim for continuity
-- **LLM-driven summarization** — Older messages are summarized by the same LLM into a single compact summary message that replaces them
-- **Transparent notification** — A `context_compacted` event is streamed to the frontend when compaction occurs
-- **Audit trail** — Each compaction is recorded in the database with metadata about what was compressed
-- **Model-aware limits** — Context limits are tracked per model family (Claude 200k, GPT-4 128k, etc.) with a safe fallback for unknown models
+- **Threshold-based trigger** - Compaction activates at 80% of the model's context window
+- **Recent messages preserved** - The last 10 messages are always kept verbatim for continuity
+- **LLM-driven summarization** - Older messages are summarized by the same LLM into a single compact summary message that replaces them
+- **Transparent notification** - A `context_compacted` event is streamed to the frontend when compaction occurs
+- **Audit trail** - Each compaction is recorded in the database with metadata about what was compressed
+- **Model-aware limits** - Context limits are tracked per model family (Claude 200k, GPT-4 128k, etc.) with a safe fallback for unknown models
 
 ---
 
@@ -395,46 +409,46 @@ Browse, search, and manage past conversations. Sessions are organized by agent o
 
 **Session History:**
 
-- **Search** — Find conversations by content
-- **Filter by type** — View agent, team, or workflow sessions
-- **Resume conversations** — Click a session to continue where you left off
-- **Delete sessions** — Remove conversations you no longer need
+- **Search** - Find conversations by content
+- **Filter by type** - View agent, team, or workflow sessions
+- **Resume conversations** - Click a session to continue where you left off
+- **Delete sessions** - Remove conversations you no longer need
 
 **Execution Traces:**
 
-Every agent session and scheduled workflow run records a full execution trace — a sequence of spans capturing each LLM call and tool/MCP call with timing, token usage, and input/output previews.
+Every agent session and scheduled workflow run records a full execution trace - a sequence of spans capturing each LLM call and tool/MCP call with timing, token usage, and input/output previews.
 
-- **Span types** — LLM calls (Brain icon), tool calls (Wrench), MCP calls (Server), workflow steps (GitBranch)
-- **Round grouping** — Spans are grouped by tool-loop iteration ("Initial", "Round 1", "Round 2" ...)
-- **Collapsible details** — Each span reveals input/output JSON previews (truncated at 500 chars)
-- **Performance indicators** — Duration badge turns amber for spans taking > 5s; error indicator on failed spans
-- **Token summary** — Total duration, total tokens, and span count shown in the trace header
-- **Access** — Hover any session row in `/sessions` and click the Activity icon
+- **Span types** - LLM calls (Brain icon), tool calls (Wrench), MCP calls (Server), workflow steps (GitBranch)
+- **Round grouping** - Spans are grouped by tool-loop iteration ("Initial", "Round 1", "Round 2" ...)
+- **Collapsible details** - Each span reveals input/output JSON previews (truncated at 500 chars)
+- **Performance indicators** - Duration badge turns amber for spans taking > 5s; error indicator on failed spans
+- **Token summary** - Total duration, total tokens, and span count shown in the trace header
+- **Access** - Hover any session row in `/sessions` and click the Activity icon
 
 ---
 
 ### Scheduled Workflows
 
-Run workflows automatically on a server-side cron schedule — no browser required. Scheduled runs are identical to manual runs: a `WorkflowRun` record is created, each step executes sequentially, and results appear in the workflow's run history.
+Run workflows automatically on a server-side cron schedule - no browser required. Scheduled runs are identical to manual runs: a `WorkflowRun` record is created, each step executes sequentially, and results appear in the workflow's run history.
 
-- **Cron expressions** — Standard 5-field cron syntax (`minute hour day month weekday`) with a helper link to [crontab.guru](https://crontab.guru)
-- **Fixed input text** — Optionally supply the input text that feeds into the first workflow step at schedule creation time
-- **Active / paused toggle** — Pause and resume schedules without deleting them
-- **Missed-run skipping** — If the server is down during a scheduled run, the missed run is skipped rather than queued
-- **Restart persistence** — Active schedules are automatically re-registered when the server starts up
-- **Per-user ownership** — Each user manages their own schedules; they are not visible to other users
-- **Run history** — Each scheduled execution appears alongside manual runs in the workflow history dialog
+- **Cron expressions** - Standard 5-field cron syntax (`minute hour day month weekday`) with a helper link to [crontab.guru](https://crontab.guru)
+- **Fixed input text** - Optionally supply the input text that feeds into the first workflow step at schedule creation time
+- **Active / paused toggle** - Pause and resume schedules without deleting them
+- **Missed-run skipping** - If the server is down during a scheduled run, the missed run is skipped rather than queued
+- **Restart persistence** - Active schedules are automatically re-registered when the server starts up
+- **Per-user ownership** - Each user manages their own schedules; they are not visible to other users
+- **Run history** - Each scheduled execution appears alongside manual runs in the workflow history dialog
 
 ---
 
 ### Secrets Vault
 
-Store API keys, tokens, and sensitive credentials in an encrypted vault. Secrets are encrypted at rest and can be referenced when configuring providers — no need to paste raw API keys.
+Store API keys, tokens, and sensitive credentials in an encrypted vault. Secrets are encrypted at rest and can be referenced when configuring providers - no need to paste raw API keys.
 
-- **Fernet encryption at rest** — All secret values are encrypted before storage
-- **AES encryption in transit** — Secrets are transmitted via encrypted payloads
-- **Reference in providers** — Use stored secrets when adding LLM providers instead of entering keys directly
-- **CRUD management** — Create, view, update, and delete secrets from the settings page
+- **Fernet encryption at rest** - All secret values are encrypted before storage
+- **AES encryption in transit** - Secrets are transmitted via encrypted payloads
+- **Reference in providers** - Use stored secrets when adding LLM providers instead of entering keys directly
+- **CRUD management** - Create, view, update, and delete secrets from the settings page
 
 ---
 
@@ -458,10 +472,10 @@ Enterprise-grade security features built in from day one.
 
 Manage users, assign roles, and control permissions with a granular role-based access control system.
 
-- **Admin & Guest roles** — Two built-in roles with configurable permissions
-- **Six permission flags** — Create Agents, Create Teams, Create Workflows, Create Tools, Manage Providers, Manage MCP Servers
-- **User management** — Create, edit, and delete user accounts
-- **Statistics dashboard** — View total users, admin count, and guest count
+- **Admin & Guest roles** - Two built-in roles with configurable permissions
+- **Six permission flags** - Create Agents, Create Teams, Create Workflows, Create Tools, Manage Providers, Manage MCP Servers
+- **User management** - Create, edit, and delete user accounts
+- **Statistics dashboard** - View total users, admin count, and guest count
 
 ---
 
@@ -495,11 +509,11 @@ Share agent configurations as portable JSON files across any Obsidian AI instanc
 
 Give any agent or team an isolated Docker container for safe code execution and file operations. When sandbox is enabled, the agent gains a set of built-in tools to interact with the container and automatically surfaces any files it creates as artifacts in the chat panel.
 
-- **Per-agent and per-team** — Enable sandbox independently on individual agents or entire teams; all agents in a sandboxed team share the same container
-- **Isolated container** — Each sandbox runs the `obsidian-webdev-base` image with a 512 MB memory cap, 1 CPU limit, and `/workspace` as the working directory
-- **Start / stop controls** — Launch or terminate the container directly from the agent or team edit dialog; a pulsing status dot shows whether the container is live
-- **Sandbox status badge** — A live indicator appears in the chat header whenever a sandbox-enabled agent or team has an active container
-- **Built-in sandbox tools** — When an active sandbox container is detected, nine tools are automatically injected into the agent's tool set:
+- **Per-agent and per-team** - Enable sandbox independently on individual agents or entire teams; all agents in a sandboxed team share the same container
+- **Isolated container** - Each sandbox runs the `obsidian-webdev-base` image with a 512 MB memory cap, 1 CPU limit, and `/workspace` as the working directory
+- **Start / stop controls** - Launch or terminate the container directly from the agent or team edit dialog; a pulsing status dot shows whether the container is live
+- **Sandbox status badge** - A live indicator appears in the chat header whenever a sandbox-enabled agent or team has an active container
+- **Built-in sandbox tools** - When an active sandbox container is detected, nine tools are automatically injected into the agent's tool set:
 
 | Tool | Description |
 |------|-------------|
@@ -513,7 +527,7 @@ Give any agent or team an isolated Docker container for safe code execution and 
 | `sandbox_python` | Execute Python 3.12 code and return output (numpy, pandas, matplotlib, scikit-learn, requests, httpx, pytest pre-installed) |
 | `sandbox_node` | Execute JavaScript (Node.js 20) or TypeScript (ts-node) code and return output |
 
-- **Automatic artifact surfacing** — The agent is instructed via system prompt to call `sandbox_read` after creating or modifying any file and wrap the result in an `<artifact>` tag, so files appear in the artifact panel with live preview, copy, and download
+- **Automatic artifact surfacing** - The agent is instructed via system prompt to call `sandbox_read` after creating or modifying any file and wrap the result in an `<artifact>` tag, so files appear in the artifact panel with live preview, copy, and download
 
 ---
 
@@ -523,7 +537,7 @@ Run with zero-config SQLite out of the box, or switch to MongoDB for production 
 
 | Database | Config | Use Case |
 |----------|--------|----------|
-| **SQLite** | Default — no setup required | Development, single-user, small teams |
+| **SQLite** | Default - no setup required | Development, single-user, small teams |
 | **MongoDB** | Set `DATABASE_TYPE=mongo` | Production, multi-user, horizontal scaling |
 
 ---
@@ -557,7 +571,7 @@ Run with zero-config SQLite out of the box, or switch to MongoDB for production 
 2. Authentication flows through NextAuth v5 on the frontend and JWT verification on the backend
 3. All auth-sensitive payloads are AES-encrypted end-to-end (CryptoJS client-side, PyCryptodome server-side)
 4. Chat responses stream via Server-Sent Events (SSE) for real-time token delivery
-5. LLM providers are abstracted behind a factory pattern — agents reference a provider, not a specific SDK
+5. LLM providers are abstracted behind a factory pattern - agents reference a provider, not a specific SDK
 
 ---
 
@@ -625,7 +639,7 @@ The WhatsApp bridge will be available at `http://localhost:3200`.
 
 ### Voice Reply Setup (Optional)
 
-WhatsApp channels support AI-generated voice note replies. This is **optional** — text replies work without it.
+WhatsApp channels support AI-generated voice note replies. This is **optional** - text replies work without it.
 
 **System requirement: ffmpeg**
 
@@ -689,7 +703,7 @@ QWEN_TTS_DEVICE=cuda:0
 
 **Voice cloning**
 
-When Qwen3-TTS is active, users can record or upload a short voice sample (3 seconds minimum) directly in the channel settings page. The agent will reply in the user's own voice. A guided recording script is provided in the UI for best results. Voice clone prompts are cached in memory — the reference audio is only processed once per session.
+When Qwen3-TTS is active, users can record or upload a short voice sample (3 seconds minimum) directly in the channel settings page. The agent will reply in the user's own voice. A guided recording script is provided in the UI for best results. Voice clone prompts are cached in memory - the reference audio is only processed once per session.
 
 ```env
 VOICE_SAMPLES_DIR=voice_samples   # Directory where uploaded voice samples are stored
@@ -701,7 +715,7 @@ If Qwen3-TTS is unavailable (no GPU or `qwen-tts` not installed), the system fal
 
 **SoX (Optional)**
 
-[SoX](https://sox.sourceforge.net/) is used internally by Pocket TTS for audio processing. It is only needed when running in `classic` mode — if you have a CUDA GPU and Qwen3-TTS is active, SoX is not required.
+[SoX](https://sox.sourceforge.net/) is used internally by Pocket TTS for audio processing. It is only needed when running in `classic` mode - if you have a CUDA GPU and Qwen3-TTS is active, SoX is not required.
 
 ```bash
 # Windows
@@ -722,7 +736,7 @@ sudo pacman -S sox
 
 **Flash Attention (Optional)**
 
-[Flash Attention 2](https://github.com/Dao-AILab/flash-attention) speeds up transformer attention computation for Qwen3-TTS on CUDA GPUs. Without it, the system falls back to standard PyTorch attention — output is identical, just slower.
+[Flash Attention 2](https://github.com/Dao-AILab/flash-attention) speeds up transformer attention computation for Qwen3-TTS on CUDA GPUs. Without it, the system falls back to standard PyTorch attention - output is identical, just slower.
 
 ```bash
 uv pip install flash-attn
@@ -759,7 +773,7 @@ This starts both the frontend and backend concurrently.
 # Generate ENCRYPTION_KEY and JWT_SECRET_KEY (any random string works):
 openssl rand -hex 32
 
-# Generate PROVIDER_KEY_SECRET (must be a valid Fernet key — 32 url-safe base64-encoded bytes):
+# Generate PROVIDER_KEY_SECRET (must be a valid Fernet key - 32 url-safe base64-encoded bytes):
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
@@ -782,14 +796,14 @@ RATE_LIMIT_API_CLIENT=100
 # Database type: "sqlite" (default) or "mongo"
 DATABASE_TYPE=sqlite
 
-# Tavily Search API key — required for the web_search agent tool
+# Tavily Search API key - required for the web_search agent tool
 # Get a free key (1000 searches/month) at https://app.tavily.com
 TAVILY_API_KEY=tvly-...
 
 # WhatsApp bridge URL (default: http://localhost:3200)
 WA_BRIDGE_URL=http://localhost:3200
 
-# TTS — Qwen3-TTS settings (GPU only; ignored if qwen-tts not installed)
+# TTS - Qwen3-TTS settings (GPU only; ignored if qwen-tts not installed)
 QWEN_TTS_SIZE=0.6B          # or 1.7B for higher quality
 QWEN_TTS_DEVICE=cuda:0
 VOICE_SAMPLES_DIR=voice_samples
@@ -854,8 +868,8 @@ Navigate to the **Admin** panel to create users, assign roles (Admin/Guest), and
 
 The backend exposes a RESTful API with interactive documentation:
 
-- **Swagger UI** — `http://localhost:8000/docs`
-- **ReDoc** — `http://localhost:8000/redoc`
+- **Swagger UI** - `http://localhost:8000/docs`
+- **ReDoc** - `http://localhost:8000/redoc`
 
 ### Key Endpoints
 
@@ -924,6 +938,8 @@ The backend exposes a RESTful API with interactive documentation:
 | **WhatsApp** | `/wa/channels/{id}/voice-sample` | POST / DELETE | Upload or remove voice clone sample |
 | **Prompt Vault** | `/prompt-vault` | GET / POST | List or create saved prompts |
 | **Prompt Vault** | `/prompt-vault/{id}` | GET / PUT / DELETE | Get, update, or delete a prompt |
+| **Skills** | `/skills` | GET / POST | List or create skills (Claude agents only) |
+| **Skills** | `/skills/{id}` | GET / PUT / DELETE | Get, update, or delete a skill |
 | **Health** | `/health` | GET | Health check |
 
 ### Programmatic Access
@@ -982,7 +998,7 @@ curl -H "X-API-Key: your-client-id" \
 
 ```
 obsidian-ai/
-├── package.json                    # Root — runs frontend + backend concurrently
+├── package.json                    # Root - runs frontend + backend concurrently
 │
 ├── backend/                        # FastAPI Python backend
 │   ├── main.py                     # App entrypoint, middleware, lifespan
@@ -1037,6 +1053,7 @@ obsidian-ai/
 │       ├── eval_router.py          # Eval suite CRUD + run management
 │       ├── optimizer_router.py     # Prompt optimizer trigger + accept/reject + vault actions
 │       ├── prompt_vault_router.py  # Prompt Vault CRUD
+│       ├── skills_router.py        # Skills Vault CRUD (Claude agents only)
 │       ├── whatsapp_router.py      # WhatsApp channel management + voice sample endpoints
 │       ├── schedule_router.py      # Workflow schedule CRUD + APScheduler sync
 │       ├── traces_router.py        # Execution trace read endpoints
@@ -1062,11 +1079,12 @@ obsidian-ai/
     │       ├── sessions/page.tsx   # Conversation history
     │       ├── settings/page.tsx   # User settings, 2FA, secrets
     │       ├── knowledge/page.tsx  # Knowledge base list
-    │       ├── knowledge/[id]/page.tsx  # KB detail — add text/file documents
+    │       ├── knowledge/[id]/page.tsx  # KB detail - add text/file documents
     │       ├── evals/page.tsx      # Eval suite builder + run results
-    │       ├── prompt-vault/page.tsx  # Prompt Vault — save & reuse prompts
+    │       ├── prompt-vault/page.tsx  # Prompt Vault - save & reuse prompts
+    │       ├── skills/page.tsx     # Skills Vault - save & attach Claude skills
     │       ├── channels/page.tsx   # WhatsApp channel list
-    │       ├── channels/[id]/page.tsx  # Channel settings — agent, voice, clone
+    │       ├── channels/[id]/page.tsx  # Channel settings - agent, voice, clone
     │       └── admin/page.tsx      # Admin panel
     │
     ├── components/                 # React components
@@ -1100,11 +1118,47 @@ Recent additions shipped to the platform.
 
 ---
 
+### 🟢 Current-Generation Model Support, Skills Vault & Reliability Fixes
+
+A maintenance and feature pass bringing the platform up to date with the latest Anthropic, OpenAI, and Google model lineups, plus a new Skills vault for Claude agents and several backend reliability fixes.
+
+**Model & API updates:**
+
+- **Anthropic** - Default and available models updated to Claude Fable 5, Claude Opus 4.8/4.7, Claude Sonnet 5, and Claude Haiku 4.5. Removed a stale `prompt-caching` beta header (prompt caching is now GA and works via `cache_control` blocks alone). Added support for current-generation models' `output_config.effort` reasoning-effort parameter, and the provider now correctly omits `temperature`/`top_p` for models that reject legacy sampling params instead of erroring.
+- **OpenAI** - Default model updated to GPT-5.5. Continues to use the Chat Completions API (still fully supported - only the separate Assistants API is being retired, which this platform never used).
+- **Google Gemini** - Default and available models updated to Gemini 3.1 Pro, Gemini 3.7/3.6 Flash, and Gemini 3.5 Flash Lite, alongside the still-supported Gemini 2.5 line.
+- **Cost tracking fix** - The per-model USD pricing table used by the Observability page was missing entries for newer model IDs, silently showing **$0.00** for any agent on a model not in the table. Extended to cover all current-generation models across Anthropic, OpenAI, Google, and xAI (Grok, via the existing OpenAI-compatible custom endpoint path).
+
+**New: Skills Vault**
+
+A new Vaults section for reusable **Skills** - named instruction bundles that get injected into an agent's system prompt, modeled on Anthropic's Agent Skills concept (progressive disclosure: a short description is always visible, full instructions apply once attached). Implemented as lightweight prompt injection rather than Anthropic's hosted code-execution container, so it works without extra infrastructure.
+
+- **Claude-only, by design** - Skills only make sense for Claude models, so the selector in the agent dialog is only enabled when the agent's provider is Anthropic *and* its model ID starts with `claude`; the gate is live and reacts immediately as you change provider/model.
+- **Full CRUD vault page** - Create, search, preview, edit, and delete skills from **Vaults → Skills**, identical UX to the existing Prompt Vault.
+- **Per-agent attachment** - Attach any number of saved skills to an agent from the agent dialog, right alongside Knowledge Bases.
+- **Both databases** - Works identically with SQLite and MongoDB.
+
+**New API endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/skills` | GET | List all skills in the vault |
+| `/skills` | POST | Create a new skill |
+| `/skills/{id}` | GET / PUT / DELETE | Get, update, or delete a skill |
+
+**Reliability fixes:**
+
+- **Fixed:** `Anthropic API error 400: tools: Tool names must be unique` - duplicate-named tools (from re-creating a tool with the same name, or an agent referencing stale duplicate IDs) were being sent to the API unfiltered. Tool lists are now deduplicated by name (keep-first-occurrence) both when assembling an agent's tool set and as a last-resort safety net inside the Anthropic provider itself.
+- **Fixed:** tool creation had no duplicate-name protection - creating or renaming a tool to a name that already existed silently produced duplicate rows with no error. `POST /tools` and `PUT /tools/{id}` now reject duplicate names with a 409, and a database-level unique constraint (partial index on active rows, since tools are soft-deleted) backstops both SQLite and MongoDB. A one-time migration deactivates any pre-existing duplicates before the constraint is applied.
+- **Fixed:** the Prompt Auto-Optimizer failed immediately with `type object 'Session' has no attribute 'agent_id'` when collecting trace sessions - the query used a column that doesn't exist on the `Session` model (which uses `entity_type`/`entity_id`, not `agent_id`). Optimizer runs now work correctly.
+
+---
+
 ### 🟢 WhatsApp Channel Integration
 
-> **Agents can now receive and reply to WhatsApp messages in real time — no Meta Business account, no API fees, no webhooks.**
+> **Agents can now receive and reply to WhatsApp messages in real time - no Meta Business account, no API fees, no webhooks.**
 
-Connect any Obsidian AI agent to a WhatsApp account in seconds using a QR code scan. Once linked, every incoming message is routed through the full agent pipeline — tools, RAG, memory, HITL — and the reply lands back in WhatsApp automatically.
+Connect any Obsidian AI agent to a WhatsApp account in seconds using a QR code scan. Once linked, every incoming message is routed through the full agent pipeline - tools, RAG, memory, HITL - and the reply lands back in WhatsApp automatically.
 
 **How it works:**
 
@@ -1112,17 +1166,17 @@ A lightweight Node.js sidecar (`wa-bridge/`) runs alongside the backend. It mana
 
 **What's included:**
 
-- **Channels page** — Create, manage, and delete WhatsApp channels from the sidebar; each channel shows live connection status (Connected / Awaiting QR / Disconnected)
-- **QR scan flow** — Click Connect, a QR code appears in the UI; scan with WhatsApp → Linked Devices and the channel goes live in seconds
-- **Per-channel agent assignment** — Each channel routes messages to a specific agent; change the agent at any time without re-scanning
-- **Contact whitelist** — Optionally restrict which WhatsApp contacts the agent responds to; unrecognised senders can receive a custom rejection message or be silently ignored
-- **Persistent sessions** — Each `(channel, WhatsApp contact)` pair maps to a persistent Obsidian AI session; the agent remembers the full conversation history and applies long-term memory across interactions
-- **HITL in channels** — When a channel-triggered agent hits a HITL-flagged tool, execution pauses; the approval card surfaces in the global notification badge in the top bar and unblocks automatically once actioned
-- **Voice note transcription** — Incoming WhatsApp voice notes are automatically transcribed using a local [faster-whisper](https://github.com/SYSTRAN/faster-whisper) `small` model (244 MB, runs entirely on CPU, no external API). The transcript is passed to the agent as text — no audio files written to disk, no cloud services involved
-- **Voice note replies** — Optionally reply with a generated voice note instead of text. The TTS pipeline auto-selects the best available engine: [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS) (high quality, CUDA GPU required, 9 preset voices across English/Chinese/Japanese/Korean) → [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) (CPU-native, ~471MB) → [Kokoro](https://github.com/hexgrad/kokoro) (CPU last resort). The engine can be forced per channel (`auto` / `qwen` / `classic`). Enable per channel, choose a voice, and optionally restrict voice replies to specific contacts. Requires `ffmpeg` (see [Voice Reply Setup](#voice-reply-setup-optional))
-- **Voice cloning** — When using Qwen3-TTS, users can record or upload a voice sample directly from the channel settings page (guided recording script included). The agent replies in the user's own voice. Clone prompts are cached — the reference audio is processed once and reused for all subsequent replies
-- **Global HITL badge** — A new bell icon in the app header polls all sessions for pending approvals and lets you approve or reject tool calls from anywhere in the UI
-- **Auto-reconnect** — The sidecar reconnects all previously authenticated channels automatically on startup; no manual re-scanning after a restart
+- **Channels page** - Create, manage, and delete WhatsApp channels from the sidebar; each channel shows live connection status (Connected / Awaiting QR / Disconnected)
+- **QR scan flow** - Click Connect, a QR code appears in the UI; scan with WhatsApp → Linked Devices and the channel goes live in seconds
+- **Per-channel agent assignment** - Each channel routes messages to a specific agent; change the agent at any time without re-scanning
+- **Contact whitelist** - Optionally restrict which WhatsApp contacts the agent responds to; unrecognised senders can receive a custom rejection message or be silently ignored
+- **Persistent sessions** - Each `(channel, WhatsApp contact)` pair maps to a persistent Obsidian AI session; the agent remembers the full conversation history and applies long-term memory across interactions
+- **HITL in channels** - When a channel-triggered agent hits a HITL-flagged tool, execution pauses; the approval card surfaces in the global notification badge in the top bar and unblocks automatically once actioned
+- **Voice note transcription** - Incoming WhatsApp voice notes are automatically transcribed using a local [faster-whisper](https://github.com/SYSTRAN/faster-whisper) `small` model (244 MB, runs entirely on CPU, no external API). The transcript is passed to the agent as text - no audio files written to disk, no cloud services involved
+- **Voice note replies** - Optionally reply with a generated voice note instead of text. The TTS pipeline auto-selects the best available engine: [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS) (high quality, CUDA GPU required, 9 preset voices across English/Chinese/Japanese/Korean) → [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) (CPU-native, ~471MB) → [Kokoro](https://github.com/hexgrad/kokoro) (CPU last resort). The engine can be forced per channel (`auto` / `qwen` / `classic`). Enable per channel, choose a voice, and optionally restrict voice replies to specific contacts. Requires `ffmpeg` (see [Voice Reply Setup](#voice-reply-setup-optional))
+- **Voice cloning** - When using Qwen3-TTS, users can record or upload a voice sample directly from the channel settings page (guided recording script included). The agent replies in the user's own voice. Clone prompts are cached - the reference audio is processed once and reused for all subsequent replies
+- **Global HITL badge** - A new bell icon in the app header polls all sessions for pending approvals and lets you approve or reject tool calls from anywhere in the UI
+- **Auto-reconnect** - The sidecar reconnects all previously authenticated channels automatically on startup; no manual re-scanning after a restart
 
 **New API endpoints:**
 
@@ -1134,8 +1188,8 @@ A lightweight Node.js sidecar (`wa-bridge/`) runs alongside the backend. It mana
 | `/wa/channels/{id}/connect` | POST | Start the Baileys socket (triggers QR) |
 | `/wa/channels/{id}/disconnect` | POST | Gracefully disconnect the socket |
 | `/wa/channels/{id}/qr` | GET (SSE) | Stream QR code and connection events |
-| `/wa/channels/{id}/status` | PATCH | Internal — sidecar updates channel status |
-| `/wa/incoming` | POST | Internal — sidecar delivers incoming messages |
+| `/wa/channels/{id}/status` | PATCH | Internal - sidecar updates channel status |
+| `/wa/incoming` | POST | Internal - sidecar delivers incoming messages |
 | `/chat/hitl/pending` | GET | List all pending HITL approvals across all sessions |
 
 **Running the sidecar:**
@@ -1152,13 +1206,13 @@ Environment variables: `WA_BRIDGE_PORT` (default `3200`), `FASTAPI_URL` (default
 
 ### Docker Sandbox
 
-Agents and teams can now be assigned an isolated Docker container for safe, persistent code execution. When a sandbox is active, nine built-in tools (`sandbox_bash`, `sandbox_write`, `sandbox_read`, `sandbox_ls`, `sandbox_glob`, `sandbox_grep`, `sandbox_delete`, `sandbox_python`, `sandbox_node`) are automatically injected into the agent's tool set — no manual tool configuration needed.
+Agents and teams can now be assigned an isolated Docker container for safe, persistent code execution. When a sandbox is active, nine built-in tools (`sandbox_bash`, `sandbox_write`, `sandbox_read`, `sandbox_ls`, `sandbox_glob`, `sandbox_grep`, `sandbox_delete`, `sandbox_python`, `sandbox_node`) are automatically injected into the agent's tool set - no manual tool configuration needed.
 
-**Start / stop from the dialog** — A new Docker Sandbox section in the agent and team edit dialogs lets you enable the sandbox and, when editing an existing agent/team, start or stop the container with a single button click. A pulsing status dot shows whether the container is live.
+**Start / stop from the dialog** - A new Docker Sandbox section in the agent and team edit dialogs lets you enable the sandbox and, when editing an existing agent/team, start or stop the container with a single button click. A pulsing status dot shows whether the container is live.
 
-**Sandbox status badge** — A live indicator appears in the chat header whenever the selected agent or team has sandbox enabled and an active container.
+**Sandbox status badge** - A live indicator appears in the chat header whenever the selected agent or team has sandbox enabled and an active container.
 
-**Automatic file surfacing** — When a sandbox is active, a system prompt injection instructs the agent to call `sandbox_read` after creating or modifying any file and wrap the result in an `<artifact>` tag. Files produced inside the container appear automatically in the artifact panel with live preview, copy, and download.
+**Automatic file surfacing** - When a sandbox is active, a system prompt injection instructs the agent to call `sandbox_read` after creating or modifying any file and wrap the result in an `<artifact>` tag. Files produced inside the container appear automatically in the artifact panel with live preview, copy, and download.
 
 **New API endpoints:**
 
@@ -1177,11 +1231,11 @@ Agents and teams can now be assigned an isolated Docker container for safe, pers
 
 A dedicated prompt library for storing, organizing, and reusing system prompts across agents.
 
-- **Vault page** — Browse and manage all saved prompts from a dedicated settings page
-- **Save from optimizer** — When the Prompt Auto-Optimizer proposes an improved prompt, accept it directly into the vault instead of (or in addition to) applying it to the agent
-- **Apply to agents** — Select any saved prompt from the vault when configuring an agent's system prompt
-- **Full CRUD** — Create, edit, and delete vault entries; each entry has a name, description, and prompt body
-- **MongoDB + SQLite support** — Works with both database backends
+- **Vault page** - Browse and manage all saved prompts from a dedicated settings page
+- **Save from optimizer** - When the Prompt Auto-Optimizer proposes an improved prompt, accept it directly into the vault instead of (or in addition to) applying it to the agent
+- **Apply to agents** - Select any saved prompt from the vault when configuring an agent's system prompt
+- **Full CRUD** - Create, edit, and delete vault entries; each entry has a name, description, and prompt body
+- **MongoDB + SQLite support** - Works with both database backends
 
 **New API endpoints:**
 
@@ -1201,7 +1255,7 @@ The WhatsApp voice reply engine has been upgraded from Pocket TTS to a full mult
 
 **Qwen3-TTS (GPU)**
 
-When a CUDA GPU is available, voice replies are synthesised using [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS) — Alibaba's state-of-the-art text-to-speech model. It produces natural, expressive audio at 12.5 FPS codec frame rate and supports 9 preset voices across four languages:
+When a CUDA GPU is available, voice replies are synthesised using [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS) - Alibaba's state-of-the-art text-to-speech model. It produces natural, expressive audio at 12.5 FPS codec frame rate and supports 9 preset voices across four languages:
 
 | Voice | Language | Character |
 |-------|----------|-----------|
@@ -1219,10 +1273,10 @@ When a CUDA GPU is available, voice replies are synthesised using [Qwen3-TTS](ht
 
 Users can record a short voice sample (or upload an audio file) directly from the channel settings page. Once saved, the agent replies in the user's own cloned voice using the Qwen3-TTS Base model. The UI includes:
 
-- **Guided recording** — An in-browser recorder with a phonetically rich script designed to capture enough phoneme coverage for a good clone
-- **Upload fallback** — Alternatively upload any audio file (WAV, MP3, WebM, etc.); the backend normalises it to 16kHz mono WAV via ffmpeg automatically
-- **Clone cache** — Voice clone prompts are computed once from the reference audio and cached in memory; subsequent replies reuse the cached prompt with zero extra latency
-- **Replace / delete** — Replace the sample at any time or remove it to revert to a preset voice
+- **Guided recording** - An in-browser recorder with a phonetically rich script designed to capture enough phoneme coverage for a good clone
+- **Upload fallback** - Alternatively upload any audio file (WAV, MP3, WebM, etc.); the backend normalises it to 16kHz mono WAV via ffmpeg automatically
+- **Clone cache** - Voice clone prompts are computed once from the reference audio and cached in memory; subsequent replies reuse the cached prompt with zero extra latency
+- **Replace / delete** - Replace the sample at any time or remove it to revert to a preset voice
 
 **Backend selection per channel**
 
@@ -1247,7 +1301,7 @@ The CPU fallback chain (Pocket TTS → Kokoro → text) is fully preserved for s
 
 ## Contributing
 
-Contributions are welcome! Whether it's bug reports, feature requests, or code contributions — all input is valued.
+Contributions are welcome! Whether it's bug reports, feature requests, or code contributions - all input is valued.
 
 ### How to Contribute
 
@@ -1292,8 +1346,8 @@ Found a bug or have a feature request? [Open an issue](https://github.com/sup3ru
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
 
-- **Free to use** — Use, study, and modify for any purpose.
-- **Copyleft** — If you distribute this software or run it as a network service, you must make the complete source code available under the same AGPL-3.0 terms.
-- **No additional restrictions** — You cannot impose further restrictions on recipients' exercise of the rights granted by this license.
+- **Free to use** - Use, study, and modify for any purpose.
+- **Copyleft** - If you distribute this software or run it as a network service, you must make the complete source code available under the same AGPL-3.0 terms.
+- **No additional restrictions** - You cannot impose further restrictions on recipients' exercise of the rights granted by this license.
 
 See the [LICENSE](LICENSE) file for the full terms.

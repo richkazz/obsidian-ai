@@ -646,7 +646,7 @@ function WorkflowDialogInner({ open, onOpenChange, agents, workflow, onCreated, 
   }, [])
 
   // Always start empty — the useEffect on [open] populates nodes for both create and edit mode.
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   const handleNodeUpdate = useCallback(

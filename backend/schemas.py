@@ -149,6 +149,7 @@ class AgentCreate(BaseModel):
     tools: Optional[list[str]] = None
     mcp_server_ids: Optional[list[str]] = None
     knowledge_base_ids: Optional[list[str]] = None
+    skill_ids: Optional[list[str]] = None
     hitl_confirmation_tools: Optional[list[str]] = None
     allow_tool_creation: bool = False
     memory_enabled: bool = True
@@ -165,6 +166,7 @@ class AgentUpdate(BaseModel):
     tools: Optional[list[str]] = None
     mcp_server_ids: Optional[list[str]] = None
     knowledge_base_ids: Optional[list[str]] = None
+    skill_ids: Optional[list[str]] = None
     hitl_confirmation_tools: Optional[list[str]] = None
     allow_tool_creation: Optional[bool] = None
     memory_enabled: Optional[bool] = None
@@ -182,6 +184,7 @@ class AgentResponse(BaseModel):
     tools: Optional[list[str]] = None
     mcp_server_ids: Optional[list[str]] = None
     knowledge_base_ids: Optional[list[str]] = None
+    skill_ids: Optional[list[str]] = None
     hitl_confirmation_tools: Optional[list[str]] = None
     allow_tool_creation: bool = False
     memory_enabled: bool = True
@@ -1062,6 +1065,33 @@ class PromptVaultResponse(BaseModel):
 
 class PromptVaultListResponse(BaseModel):
     prompts: list[PromptVaultResponse]
+
+
+# ─── Skills Vault ──────────────────────────────────────────────────────────
+
+class SkillCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    instructions: str
+
+class SkillUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+
+class SkillResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    instructions: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class SkillListResponse(BaseModel):
+    skills: list[SkillResponse]
 
 
 # ─── Optimizer Vault Actions ──────────────────────────────────────────────────

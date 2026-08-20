@@ -76,18 +76,18 @@ function StatusBadge({ status }: { status: EvalRun["status"] }) {
 function RunResultsPanel({ run, onClose }: { run: EvalRun; onClose: () => void }) {
   const [expanded, setExpanded] = useState<string | null>(null)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-background border border-border rounded-lg shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay">
+      <div className="bg-background border border-border rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
             <FlaskConical className="h-4 w-4 text-blue-500" />
-            <span className="font-medium text-sm">Run Results</span>
+            <span className="font-semibold text-base">Run Results</span>
             <StatusBadge status={run.status} />
             {run.score !== null && (
               <ScoreBadge score={run.score} total={run.total_cases} passed={run.passed_cases} />
             )}
           </div>
-          <button type="button" onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+          <button type="button" onClick={onClose} className="text-sm text-muted-foreground hover:text-foreground cursor-pointer">Close</button>
         </div>
         <div className="overflow-y-auto flex-1 p-4 space-y-2">
           {(!run.results || run.results.length === 0) && (
@@ -99,7 +99,7 @@ function RunResultsPanel({ run, onClose }: { run: EvalRun; onClose: () => void }
             <div key={res.case_id} className={`border rounded-lg overflow-hidden ${res.passed ? "border-emerald-500/20" : "border-red-500/20"}`}>
               <button
                 type="button"
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-muted/30 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted/30 transition-colors cursor-pointer"
                 onClick={() => setExpanded(expanded === res.case_id ? null : res.case_id)}
               >
                 {res.passed
@@ -115,22 +115,22 @@ function RunResultsPanel({ run, onClose }: { run: EvalRun; onClose: () => void }
               {expanded === res.case_id && (
                 <div className="border-t border-border/40 px-3 py-2 space-y-2 bg-muted/20">
                   <div>
-                    <div className="text-[10px] text-muted-foreground mb-0.5">Input</div>
+                    <div className="text-xs text-muted-foreground mb-0.5">Input</div>
                     <pre className="text-xs whitespace-pre-wrap break-all">{res.input}</pre>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <div className="text-[10px] text-muted-foreground mb-0.5">Expected</div>
+                      <div className="text-xs text-muted-foreground mb-0.5">Expected</div>
                       <pre className="text-xs whitespace-pre-wrap break-all text-muted-foreground">{res.expected}</pre>
                     </div>
                     <div>
-                      <div className="text-[10px] text-muted-foreground mb-0.5">Actual</div>
+                      <div className="text-xs text-muted-foreground mb-0.5">Actual</div>
                       <pre className={`text-xs whitespace-pre-wrap break-all ${res.passed ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{res.actual_output}</pre>
                     </div>
                   </div>
                   {res.reasoning && (
                     <div>
-                      <div className="text-[10px] text-muted-foreground mb-0.5">Reasoning</div>
+                      <div className="text-xs text-muted-foreground mb-0.5">Reasoning</div>
                       <p className="text-xs text-muted-foreground italic">{res.reasoning}</p>
                     </div>
                   )}
@@ -468,7 +468,7 @@ export default function EvalsPage() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <FlaskConical className="h-4 w-4 text-blue-500" />
-            <span className="font-semibold text-sm">Eval Suites</span>
+            <span className="font-semibold text-base">Eval Suites</span>
           </div>
           <Button
             size="sm"
@@ -507,22 +507,22 @@ export default function EvalsPage() {
                     {suite.agent_id && (
                       <div className="text-xs text-muted-foreground mt-0.5">{agentName(suite.agent_id)}</div>
                     )}
-                    <div className="text-[10px] text-muted-foreground mt-1">
+                    <div className="text-xs text-muted-foreground mt-1">
                       {suite.test_cases.length} case{suite.test_cases.length !== 1 ? "s" : ""}
                     </div>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setEditSuite(suite); setSuiteDialogOpen(true) }}
-                      className="text-muted-foreground hover:text-foreground p-0.5"
+      onClick={(e) => { e.stopPropagation(); setEditSuite(suite); setSuiteDialogOpen(true) }}
+                      className="text-muted-foreground hover:text-foreground p-0.5 cursor-pointer"
                     >
                       <RefreshCw className="h-3 w-3" />
                     </button>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); handleDelete(suite) }}
-                      className="text-muted-foreground hover:text-destructive p-0.5"
+                      className="text-muted-foreground hover:text-destructive p-0.5 cursor-pointer"
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
@@ -539,8 +539,8 @@ export default function EvalsPage() {
         {!selectedSuite ? (
           <div className="flex-1 flex items-center justify-center text-muted-foreground">
             <div className="text-center space-y-2">
-              <FlaskConical className="h-8 w-8 mx-auto opacity-30" />
-              <p className="text-sm">Select a suite to view runs and trigger evaluations</p>
+              <FlaskConical className="h-8 w-8 mx-auto text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Select a suite to view runs and trigger evaluations</p>
             </div>
           </div>
         ) : (
@@ -549,7 +549,7 @@ export default function EvalsPage() {
             <div className="px-6 py-4 border-b border-border">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="font-semibold text-lg">{selectedSuite.name}</h2>
+                  <h2 className="font-bold text-xl tracking-tight">{selectedSuite.name}</h2>
                   {selectedSuite.description && (
                     <p className="text-sm text-muted-foreground mt-0.5">{selectedSuite.description}</p>
                   )}
@@ -624,12 +624,12 @@ export default function EvalsPage() {
                             <span className="text-xs text-muted-foreground">{agentName(run.agent_id)}</span>
                           )}
                         </div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">{formatDate(run.created_at)}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{formatDate(run.created_at)}</div>
                       </div>
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleDeleteRun(String(run.id)) }}
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all shrink-0"
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all shrink-0 cursor-pointer"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

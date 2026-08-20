@@ -106,18 +106,18 @@ export default function ChannelsPage() {
   const agentName = (id: string) => agents.find((a) => String(a.id) === String(id))?.name ?? id
 
   return (
-    <div className="flex-1 overflow-auto p-6">
+    <div className="h-full overflow-y-auto p-8 w-full space-y-8">
       <ConfirmDialog />
 
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <MessageCircle className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-lg font-semibold">Channels</h1>
+            <h1 className="text-3xl font-bold tracking-tight uppercase">Channels</h1>
           </div>
-          <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5">
-            <Plus className="h-3.5 w-3.5" />
+          <Button onClick={() => setShowCreate(true)} className="gap-1.5">
+            <Plus className="h-4 w-4" />
             New Channel
           </Button>
         </div>
@@ -157,7 +157,7 @@ export default function ChannelsPage() {
                     <span className="text-sm font-medium truncate">{ch.name}</span>
                     <StatusBadge status={ch.status} />
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                  <div className="text-sm text-muted-foreground mt-0.5 flex items-center gap-2">
                     <span>Agent: {agentName(ch.agent_id)}</span>
                     {ch.wa_phone && <span>· {ch.wa_phone}</span>}
                     {ch.allowed_jids && ch.allowed_jids.length > 0 && (
@@ -170,24 +170,24 @@ export default function ChannelsPage() {
                 <div className="flex items-center gap-1 shrink-0">
                   {ch.status === "pending_qr" && (
                     <Link href={`/channels/${ch.id}`}>
-                      <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs">
-                        <QrCode className="h-3 w-3" />
+                      <Button variant="outline" size="sm" className="gap-1.5">
+                        <QrCode className="h-3.5 w-3.5" />
                         Scan QR
                       </Button>
                     </Link>
                   )}
                   <Link href={`/channels/${ch.id}`}>
-                    <Button variant="ghost" size="icon" className="h-7 w-7">
-                      <Settings2 className="h-3.5 w-3.5" />
+                    <Button variant="ghost" size="icon">
+                      <Settings2 className="h-4 w-4" />
                     </Button>
                   </Link>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    className="text-destructive hover:text-destructive"
                     onClick={() => handleDelete(ch)}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>

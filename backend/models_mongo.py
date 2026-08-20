@@ -529,6 +529,31 @@ class ToolDefinitionCollection:
         collection = db[cls.collection_name]
         await collection.create_index("user_id")
 
+        # Deactivate pre-existing duplicate-named tools (same user_id + name, both
+        # active) before enforcing uniqueness, keeping the oldest doc of each group.
+        seen: dict[tuple, ObjectId] = {}
+        dupe_ids = []
+        async for doc in collection.find(
+            {"is_active": True}, {"_id": 1, "user_id": 1, "name": 1}
+        ).sort("_id", 1):
+            key = (doc.get("user_id"), doc.get("name"))
+            if key in seen:
+                dupe_ids.append(doc["_id"])
+            else:
+                seen[key] = doc["_id"]
+        if dupe_ids:
+            await collection.update_many(
+                {"_id": {"$in": dupe_ids}}, {"$set": {"is_active": False}}
+            )
+
+        # One active tool name per user going forward.
+        await collection.create_index(
+            [("user_id", 1), ("name", 1)],
+            unique=True,
+            partialFilterExpression={"is_active": True},
+            name="ux_tool_definitions_user_name_active",
+        )
+
     @classmethod
     async def find_by_user(cls, db, user_id: str) -> list[dict]:
         collection = db[cls.collection_name]
@@ -735,6 +760,58 @@ class PromptVaultCollection:
         collection = db[cls.collection_name]
         result = await collection.delete_one({"_id": ObjectId(prompt_id), "user_id": user_id})
         return result.deleted_count > 0
+
+
+class SkillCollection:
+    """A reusable Claude Skill: instruction bundle injected into an agent's
+    system prompt when attached (see ToolDefinition-style pattern; not backed
+    by Anthropic's hosted code-execution container)."""
+    collection_name = "skills"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index("user_id")
+
+    @classmethod
+    async def find_by_user(cls, db, user_id: str) -> list[dict]:
+        collection = db[cls.collection_name]
+        cursor = collection.find({"user_id": user_id, "is_active": True}).sort("created_at", -1)
+        return await cursor.to_list(length=200)
+
+    @classmethod
+    async def find_by_id(cls, db, skill_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"_id": ObjectId(skill_id)})
+
+    @classmethod
+    async def create(cls, db, data: dict) -> dict:
+        collection = db[cls.collection_name]
+        data.setdefault("is_active", True)
+        data.setdefault("created_at", datetime.utcnow())
+        data["updated_at"] = None
+        result = await collection.insert_one(data)
+        data["_id"] = result.inserted_id
+        return data
+
+    @classmethod
+    async def update(cls, db, skill_id: str, user_id: str, updates: dict) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        updates["updated_at"] = datetime.utcnow()
+        return await collection.find_one_and_update(
+            {"_id": ObjectId(skill_id), "user_id": user_id},
+            {"$set": updates},
+            return_document=True,
+        )
+
+    @classmethod
+    async def delete(cls, db, skill_id: str, user_id: str) -> bool:
+        collection = db[cls.collection_name]
+        result = await collection.update_one(
+            {"_id": ObjectId(skill_id), "user_id": user_id},
+            {"$set": {"is_active": False}},
+        )
+        return result.modified_count > 0
 
 
 class KnowledgeBaseCollection:

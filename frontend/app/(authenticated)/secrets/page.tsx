@@ -178,17 +178,17 @@ export default function SecretsPage() {
   }
 
   return (
-    <div className="h-full w-full overflow-y-auto p-6 max-w-5xl mx-auto">
+    <div className="h-full overflow-y-auto p-8 w-full space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-muted">
             <Key className="h-5 w-5 text-muted-foreground" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">Secrets Vault</h1>
-              <Badge variant="secondary" className="text-xs">{secrets.length}</Badge>
+              <h1 className="text-3xl font-bold tracking-tight uppercase">Secrets Vault</h1>
+              <Badge variant="secondary">{secrets.length}</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
               Encrypted API keys, tokens, and sensitive values
@@ -211,10 +211,10 @@ export default function SecretsPage() {
         </div>
       ) : secrets.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <Key className="h-10 w-10 text-muted-foreground/30" />
+          <Key className="h-10 w-10 text-muted-foreground" />
           <div>
-            <p className="text-sm font-medium">No secrets stored yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-base font-medium">No secrets stored yet</p>
+            <p className="text-sm text-muted-foreground mt-1">
               Add API keys, tokens, and other sensitive values to use in your agents
             </p>
           </div>
@@ -232,7 +232,7 @@ export default function SecretsPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{secret.name}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <code className="text-xs font-mono bg-muted px-2 py-0.5 rounded">
+                      <code className="text-sm font-mono bg-muted px-2 py-0.5 rounded">
                         {revealedSecrets.has(secret.id) ? secret.masked_value : "•••••••••••••••"}
                       </code>
                       <Button
@@ -247,7 +247,7 @@ export default function SecretsPage() {
                       </Button>
                     </div>
                     {secret.description && (
-                      <p className="text-xs text-muted-foreground mt-1">{secret.description}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{secret.description}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

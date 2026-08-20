@@ -86,11 +86,11 @@ function ArtifactRefPill({ artifactRef }: { artifactRef: ArtifactRef }) {
   return (
     <button
       onClick={() => { setActiveArtifactId(artifactRef.id); setArtifactPanelOpen(true) }}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-muted/40 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border bg-muted/40 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
     >
       <FileCode2 className="h-3 w-3 shrink-0" />
       <span>{artifactRef.title}</span>
-      <span className="text-[10px] font-mono text-muted-foreground/70">{artifactRef.type}</span>
+      <span className="text-xs font-mono text-muted-foreground">{artifactRef.type}</span>
     </button>
   )
 }
@@ -177,14 +177,14 @@ export function MessageBubble({
 
   return (
     <Message from={isUser ? "user" : "assistant"}>
-      <MessageContent>
+      <MessageContent className="group-[.is-user]:rounded-2xl">
         {/* Agent name badge (team mode) */}
         {agentName && (
           <div className="flex items-center gap-1.5 mb-1">
-            <Bot className="size-3 text-blue-500" />
-            <span className="text-[11px] font-medium text-blue-500">{agentName}</span>
+            <Bot className="size-3.5 text-primary" />
+            <span className="text-xs font-medium text-primary">{agentName}</span>
             {isIntermediate && (
-              <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">step</span>
+              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">step</span>
             )}
           </div>
         )}
@@ -205,7 +205,7 @@ export function MessageBubble({
             {kbContext.map((kb) => (
               <div
                 key={kb.id}
-                className="flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-[11px] text-muted-foreground"
+                className="flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground"
               >
                 <BookOpen className="size-3 shrink-0" />
                 <span>{kb.name}</span>
@@ -233,14 +233,14 @@ export function MessageBubble({
         {!isUser && hitlApprovalEvent && (
           <HITLApproval
             event={hitlApprovalEvent}
-            accessToken={accessToken}
-            onResolved={onHITLResolved}
+            accessToken={accessToken ?? ""}
+            onResolved={onHITLResolved ?? (() => {})}
           />
         )}
 
         {/* Tool generating indicator */}
         {!isUser && generatingTool && !toolProposalEvent && (
-          <div className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2.5 text-xs text-violet-600 dark:text-violet-400">
+          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-xs text-primary">
             <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
             <Wrench className="h-3.5 w-3.5 shrink-0" />
             <span>Generating implementation for <span className="font-mono font-semibold">{generatingTool.name}</span>...</span>
@@ -296,7 +296,7 @@ export function MessageBubble({
         {/* Message content */}
         {message.content ? (
           isUser ? (
-            <p className="text-sm whitespace-pre-wrap">{message.content.replace(/^\[EDIT ARTIFACT\s+[^\]]*\]\n?/, "")}</p>
+            <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{message.content.replace(/^\[EDIT ARTIFACT\s+[^\]]*\]\n?/, "")}</p>
           ) : isStreaming ? (
             <div className="relative">
               <MessageResponse>
@@ -370,7 +370,7 @@ export function MessageBubble({
                   exit={{ opacity: 0, scale: 0.5 }}
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 >
-                  <Check className="size-3.5 text-emerald-500" />
+                  <Check className="size-3.5 text-success" />
                 </motion.span>
               ) : (
                 <motion.span
@@ -388,14 +388,14 @@ export function MessageBubble({
           <MessageAction
             tooltip="Helpful"
             onClick={() => handleFeedback("up")}
-            className={feedback === "up" ? "text-green-500 hover:text-green-500" : ""}
+            className={feedback === "up" ? "text-success hover:text-success" : ""}
           >
             <ThumbsUp className="size-3.5" />
           </MessageAction>
           <MessageAction
             tooltip="Not helpful"
             onClick={() => handleFeedback("down")}
-            className={feedback === "down" ? "text-red-500 hover:text-red-500" : ""}
+            className={feedback === "down" ? "text-destructive hover:text-destructive" : ""}
           >
             <ThumbsDown className="size-3.5" />
           </MessageAction>
@@ -404,7 +404,7 @@ export function MessageBubble({
 
       {/* Metadata */}
       {message.metadata && !isStreaming && !isUser && (
-        <div className="text-[10px] text-muted-foreground flex items-center gap-2">
+        <div className="text-xs text-muted-foreground flex items-center gap-2">
           {message.metadata.model && <span>{message.metadata.model}</span>}
           {(message.metadata.input_tokens != null || message.metadata.output_tokens != null) && (
             <span className="tabular-nums">

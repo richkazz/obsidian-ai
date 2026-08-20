@@ -1,5 +1,5 @@
 
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'admin' | 'user' | 'guest';
 
 export interface RouteConfig {
   path        : string;
@@ -25,6 +25,7 @@ export const Routes = {
   CHANNELS        : '/channels',
   SECRETS         : '/secrets',
   PROMPTS         : '/prompts',
+  SKILLS          : '/skills',
 } as const;
 
 
@@ -100,6 +101,12 @@ export const ProtectedRoutes: RouteConfig[] = [
     label: 'Prompt Vault',
     allowedRoles: ['admin', 'user'],
     description: 'Reusable system prompt templates',
+  },
+  {
+    path: Routes.SKILLS,
+    label: 'Skills',
+    allowedRoles: ['admin', 'user'],
+    description: 'Reusable Claude Skills (Anthropic Claude agents only)',
   },
 ];
 

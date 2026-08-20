@@ -55,6 +55,7 @@ import type {
   CreateWAChannelRequest,
   UpdateWAChannelRequest,
   HITLApprovalItem,
+  Skill,
 } from "@/types/playground"
 
 interface ApiResponse<T> {
@@ -903,6 +904,16 @@ class ApiClient {
 
   async getWAVoiceScript(id: string): Promise<{ script: string }> {
     return this.request<{ script: string }>(AppRoutes.WAVoiceScript(id))
+  }
+
+  // ============= Skills Vault =============
+  async listSkills(): Promise<Skill[]> {
+    const result = await this.request<{ skills: Skill[] }>(AppRoutes.ListSkills())
+    return result.skills || []
+  }
+
+  async getSkill(id: string): Promise<Skill> {
+    return this.request<Skill>(AppRoutes.GetSkill(id))
   }
 
   // ============= Global HITL =============

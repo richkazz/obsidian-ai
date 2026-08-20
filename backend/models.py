@@ -61,7 +61,8 @@ class Agent(Base):
     tools_json    = Column(Text, nullable=True)            # JSON array of tool definition IDs
     mcp_servers_json = Column(Text, nullable=True)         # JSON array of MCP server IDs
     knowledge_base_ids_json = Column(Text, nullable=True)  # JSON array of knowledge base IDs
-    model_id      = Column(String, nullable=True)              # model to use, e.g. "claude-sonnet-4-6"
+    skill_ids_json = Column(Text, nullable=True)            # JSON array of skill IDs (Claude agents only)
+    model_id      = Column(String, nullable=True)              # model to use, e.g. "claude-sonnet-5"
     hitl_confirmation_tools_json = Column(Text, nullable=True)  # JSON array of tool names requiring HITL
     allow_tool_creation = Column(Boolean, default=False, nullable=False)  # agent can propose new tools
     memory_enabled       = Column(Boolean, default=True, nullable=False)   # long-term memory toggle
@@ -178,7 +179,13 @@ class WorkflowRun(Base):
 
 
 class ToolDefinition(Base):
-    """A reusable tool/function definition."""
+    """A reusable tool/function definition.
+
+    Uniqueness of (user_id, name) among active rows is enforced by the partial
+    index `ux_tool_definitions_user_name_active` created in main.py's SQLite
+    migration block (not expressible as a plain Column constraint since rows
+    are soft-deleted via is_active rather than removed).
+    """
     __tablename__ = "tool_definitions"
 
     id              = Column(Integer, primary_key=True, index=True)
@@ -211,6 +218,26 @@ class MCPServer(Base):
     is_active       = Column(Boolean, default=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class Skill(Base):
+    """A reusable Claude Skill: a named instruction bundle (SKILL.md-style) that
+    gets injected into an agent's system prompt when attached. Modeled on
+    Anthropic's Agent Skills concept (progressive-disclosure instruction
+    bundles) but implemented as plain prompt injection rather than their
+    hosted code-execution container — so it works without extra
+    infrastructure, while still only being meaningful for Claude models
+    (gated at the agent-config layer, not here)."""
+    __tablename__ = "skills"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    user_id      = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name         = Column(String, nullable=False)
+    description  = Column(Text, nullable=True)   # short summary shown before the skill is "loaded"
+    instructions = Column(Text, nullable=False)  # full SKILL.md-style body injected when active
+    is_active    = Column(Boolean, default=True)
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at   = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class KnowledgeBase(Base):

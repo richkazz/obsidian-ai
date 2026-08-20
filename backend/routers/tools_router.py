@@ -2,6 +2,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from config import DATABASE_TYPE
 from database import get_db
@@ -69,6 +70,13 @@ async def create_tool(
 
     if DATABASE_TYPE == "mongo":
         mongo_db = get_database()
+        existing = await mongo_db[ToolDefinitionCollection.collection_name].find_one({
+            "user_id": current_user.user_id,
+            "name": data.name,
+            "is_active": True,
+        })
+        if existing:
+            raise HTTPException(status_code=409, detail=f"A tool named '{data.name}' already exists")
         doc = {
             "user_id": current_user.user_id,
             "name": data.name,
@@ -81,6 +89,14 @@ async def create_tool(
         created = await ToolDefinitionCollection.create(mongo_db, doc)
         return _tool_to_response(created, is_mongo=True)
 
+    existing = db.query(ToolDefinition).filter(
+        ToolDefinition.user_id == int(current_user.user_id),
+        ToolDefinition.name == data.name,
+        ToolDefinition.is_active == True,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"A tool named '{data.name}' already exists")
+
     tool = ToolDefinition(
         user_id=int(current_user.user_id),
         name=data.name,
@@ -91,7 +107,11 @@ async def create_tool(
         requires_confirmation=data.requires_confirmation,
     )
     db.add(tool)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"A tool named '{data.name}' already exists")
     db.refresh(tool)
     return _tool_to_response(tool)
 
@@ -163,6 +183,14 @@ async def update_tool(
 
     if DATABASE_TYPE == "mongo":
         mongo_db = get_database()
+        if "name" in updates:
+            existing = await mongo_db[ToolDefinitionCollection.collection_name].find_one({
+                "user_id": current_user.user_id,
+                "name": updates["name"],
+                "is_active": True,
+            })
+            if existing and str(existing["_id"]) != tool_id:
+                raise HTTPException(status_code=409, detail=f"A tool named '{updates['name']}' already exists")
         updated = await ToolDefinitionCollection.update(mongo_db, tool_id, current_user.user_id, updates)
         if not updated:
             raise HTTPException(status_code=404, detail="Tool not found")
@@ -175,9 +203,23 @@ async def update_tool(
     if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
 
+    if "name" in updates and updates["name"] != tool.name:
+        existing = db.query(ToolDefinition).filter(
+            ToolDefinition.user_id == int(current_user.user_id),
+            ToolDefinition.name == updates["name"],
+            ToolDefinition.is_active == True,
+            ToolDefinition.id != tool.id,
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail=f"A tool named '{updates['name']}' already exists")
+
     for key, value in updates.items():
         setattr(tool, key, value)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"A tool named '{updates.get('name')}' already exists")
     db.refresh(tool)
     return _tool_to_response(tool)
 

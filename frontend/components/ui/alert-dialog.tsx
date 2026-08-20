@@ -64,7 +64,7 @@ function AlertDialogContent({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="fixed inset-0 z-50 bg-black/50"
+              className="fixed inset-0 z-50 bg-overlay"
             />
           </AlertDialogPrimitive.Overlay>
           <AlertDialogPrimitive.Content
@@ -92,7 +92,7 @@ function AlertDialogContent({
               }}
               transition={{ type: "spring", stiffness: 150, damping: 25 }}
               className={cn(
-                "bg-background grid w-full max-w-[calc(100vw-2rem)] gap-4 rounded-lg border p-6 shadow-lg sm:max-w-md",
+                "bg-background grid w-full max-w-[calc(100vw-2rem)] gap-4 rounded-2xl border p-6 shadow-xl sm:max-w-md",
                 className,
               )}
             >
@@ -141,7 +141,7 @@ function AlertDialogTitle({
   return (
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
-      className={cn("text-lg leading-none font-semibold", className)}
+      className={cn("text-xl leading-none font-semibold tracking-tight", className)}
       {...props}
     />
   )

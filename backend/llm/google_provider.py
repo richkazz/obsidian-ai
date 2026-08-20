@@ -9,7 +9,7 @@ from .base import BaseLLMProvider, LLMMessage, LLMStreamChunk, LLMToolCall
 
 class GoogleProvider(BaseLLMProvider):
 
-    def __init__(self, api_key=None, base_url=None, model_id="gemini-2.0-flash", config=None):
+    def __init__(self, api_key=None, base_url=None, model_id="gemini-3.1-pro", config=None):
         super().__init__(
             api_key,
             base_url or "https://generativelanguage.googleapis.com/v1beta",
@@ -166,10 +166,12 @@ class GoogleProvider(BaseLLMProvider):
 
     async def list_models(self) -> list[dict]:
         return [
-            {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash"},
-            {"id": "gemini-2.0-flash-lite", "name": "Gemini 2.0 Flash Lite"},
-            {"id": "gemini-2.5-pro-preview-05-06", "name": "Gemini 2.5 Pro"},
-            {"id": "gemini-2.5-flash-preview-04-17", "name": "Gemini 2.5 Flash"},
+            {"id": "gemini-3.1-pro", "name": "Gemini 3.1 Pro"},
+            {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash"},
+            {"id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash"},
+            {"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash Lite"},
+            {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+            {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
         ]
 
     async def test_connection(self) -> bool:

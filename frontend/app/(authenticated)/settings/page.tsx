@@ -28,20 +28,20 @@ export default function SettingsPage() {
   const { data: session, update } = useSession()
 
   return (
-    <div className="h-full w-full overflow-y-auto p-6 max-w-5xl mx-auto">
-      <div className="flex items-center gap-3 mb-8">
+    <div className="h-full overflow-y-auto p-8 w-full space-y-8">
+      <div className="flex items-center gap-3">
         <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-muted">
           <Settings className="h-5 w-5 text-muted-foreground" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+          <h1 className="text-3xl font-bold tracking-tight uppercase">Settings</h1>
           <p className="text-sm text-muted-foreground">
             Application settings and preferences
           </p>
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="max-w-3xl space-y-6">
         <RoleManagementCard session={session} update={update} />
         <ChangePasswordCard session={session} />
         <TwoFactorCard session={session} />
@@ -445,6 +445,7 @@ function TwoFactorCard({ session }: { session: any }) {
             <p className="text-sm">
               Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
             </p>
+            {/* Intentional: QR code needs a solid white background to scan correctly in both themes */}
             <div className="flex justify-center p-4 bg-white rounded-lg w-fit">
               <img
                 src={setupData.qr_code_data_uri}

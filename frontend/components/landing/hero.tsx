@@ -35,15 +35,15 @@ function Background() {
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       {/* Fine grid */}
       <div
-        className="absolute inset-0 opacity-[0.018]"
+        className="absolute inset-0 opacity-[0.05]"
         style={{
-          backgroundImage: `linear-gradient(to right, hsl(var(--foreground)) 1px, transparent 1px),
-                            linear-gradient(to bottom, hsl(var(--foreground)) 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(to right, var(--foreground) 1px, transparent 1px),
+                            linear-gradient(to bottom, var(--foreground) 1px, transparent 1px)`,
           backgroundSize: "72px 72px",
         }}
       />
       {/* Top-left editorial glow — offset to match left-aligned text */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_45%_at_25%_0%,hsl(var(--foreground)/0.05),transparent)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_45%_at_25%_0%,var(--foreground)/0.06,transparent)]" />
       {/* Center-right glow near demo */}
       <motion.div
         className="absolute left-2/3 top-1/4 h-96 w-96 -translate-x-1/2 rounded-full bg-foreground/3 blur-[120px]"
@@ -71,10 +71,10 @@ function PlaygroundDemo() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-1 overflow-hidden">
-        <div className="hidden sm:flex w-40 shrink-0 flex-col border-r border-border/20 bg-muted/5 p-2 gap-0.5">
-          <p className="px-2 py-1 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1">Sessions</p>
+        <div className="hidden sm:flex w-40 shrink-0 flex-col border-r border-border bg-muted/20 p-2 gap-0.5">
+          <p className="px-2 py-1 text-[9px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Sessions</p>
           {["Research session", "Code review", "Data analysis"].map((s, i) => (
-            <div key={s} className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] cursor-default ${i === 0 ? "bg-muted/30 text-foreground" : "text-muted-foreground/60"}`}>
+            <div key={s} className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] cursor-default ${i === 0 ? "bg-muted text-foreground" : "text-muted-foreground"}`}>
               <MessageSquare className="h-3 w-3 shrink-0" /><span className="truncate">{s}</span>
             </div>
           ))}
@@ -88,11 +88,11 @@ function PlaygroundDemo() {
 
           {step >= 1 && (
             <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="flex items-center gap-2 rounded-lg border border-border/25 bg-muted/20 px-3 py-1.5 text-[10px]">
-                <Wrench className="h-3 w-3 text-muted-foreground/60" />
-                <span className="font-mono text-muted-foreground/80">get_weather</span>
-                <span className="text-muted-foreground/30">·</span>
-                <span className="text-muted-foreground/60">Tokyo</span>
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-1.5 text-[10px]">
+                <Wrench className="h-3 w-3 text-muted-foreground" />
+                <span className="font-mono text-foreground">get_weather</span>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground">Tokyo</span>
                 <div className="ml-auto">
                   {step === 1 ? <Loader2 className="h-3 w-3 animate-spin text-blue-400" /> : <CheckCircle className="h-3 w-3 text-emerald-400" />}
                 </div>
@@ -101,11 +101,11 @@ function PlaygroundDemo() {
           )}
           {step >= 2 && (
             <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="flex items-center gap-2 rounded-lg border border-border/25 bg-muted/20 px-3 py-1.5 text-[10px]">
-                <Wrench className="h-3 w-3 text-muted-foreground/60" />
-                <span className="font-mono text-muted-foreground/80">web_search</span>
-                <span className="text-muted-foreground/30">·</span>
-                <span className="text-muted-foreground/60">AI news today</span>
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-1.5 text-[10px]">
+                <Wrench className="h-3 w-3 text-muted-foreground" />
+                <span className="font-mono text-foreground">web_search</span>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground">AI news today</span>
                 <div className="ml-auto">
                   {step === 2 ? <Loader2 className="h-3 w-3 animate-spin text-blue-400" /> : <CheckCircle className="h-3 w-3 text-emerald-400" />}
                 </div>
@@ -114,17 +114,17 @@ function PlaygroundDemo() {
           )}
           {step >= 3 && (
             <motion.div className="flex justify-start" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-border/25 bg-muted/20 px-3.5 py-2 text-[11px] leading-relaxed text-foreground/90">
+              <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-border bg-muted/60 px-3.5 py-2 text-[11px] leading-relaxed text-foreground">
                 Tokyo is <span className="font-medium text-foreground">18°C, partly cloudy</span>. Today in AI: Anthropic expanded Claude&apos;s context window, OpenAI shipped GPT-5, and multi-agent orchestration is the dominant enterprise trend.
               </div>
             </motion.div>
           )}
         </div>
       </div>
-      <div className="border-t border-border/15 px-3 py-2">
-        <div className="flex items-center gap-2 rounded-lg border border-border/20 bg-muted/10 px-3 py-1.5">
-          <span className="flex-1 text-[11px] text-muted-foreground/30 italic">Ask your agent…</span>
-          <div className="flex h-5 w-5 items-center justify-center rounded-md bg-primary/60">
+      <div className="border-t border-border px-3 py-2">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5">
+          <span className="flex-1 text-[11px] text-muted-foreground italic">Ask your agent…</span>
+          <div className="flex h-5 w-5 items-center justify-center rounded-md bg-primary">
             <ArrowRight className="h-2.5 w-2.5 text-primary-foreground" />
           </div>
         </div>
@@ -182,6 +182,12 @@ function TeamsDemo() {
     return () => clearInterval(t)
   }, [])
 
+  const agentColorClasses: Record<string, { bg: string; text: string }> = {
+    "chart-1": { bg: "bg-chart-1/10", text: "text-chart-1" },
+    "chart-2": { bg: "bg-chart-2/10", text: "text-chart-2" },
+    "chart-5": { bg: "bg-chart-5/10", text: "text-chart-5" },
+  }
+
   const agents = [
     { name: "Coordinator",    role: "Routes queries to specialists",   status: "routing",    col: "chart-1" },
     { name: "Research Agent", role: "Fetches & synthesises sources",   status: "responding", col: "chart-2" },
@@ -201,14 +207,14 @@ function TeamsDemo() {
         <div className="flex flex-col gap-1.5">
           {agents.map((ag, i) => (
             <div key={ag.name} className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-all duration-300 ${active === i ? "bg-muted/30 border border-border/25" : "bg-transparent"}`}>
-              <div className={`h-6 w-6 shrink-0 flex items-center justify-center rounded-full bg-${ag.col}/10`}>
-                <Bot className={`h-3 w-3 text-${ag.col}`} />
+              <div className={`h-6 w-6 shrink-0 flex items-center justify-center rounded-full ${agentColorClasses[ag.col].bg}`}>
+                <Bot className={`h-3 w-3 ${agentColorClasses[ag.col].text}`} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[11px] font-medium">{ag.name}</div>
                 <div className="text-[9px] text-muted-foreground/60">{ag.role}</div>
               </div>
-              <span className={`text-[10px] font-mono ${active === i ? `text-${ag.col}` : "text-muted-foreground/30"}`}>
+              <span className={`text-[10px] font-mono ${active === i ? agentColorClasses[ag.col].text : "text-muted-foreground/30"}`}>
                 {active === i ? ag.status : "idle"}
               </span>
             </div>
@@ -423,14 +429,14 @@ export function Hero() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.1 }}
             >
-              <Sparkles className="h-3 w-3 text-muted-foreground/60" />
-              <span className="text-[11px] font-medium tracking-wide text-muted-foreground/80">Open-source · AGPL-3.0</span>
+              <Sparkles className="h-3 w-3 text-muted-foreground" />
+              <span className="text-[11px] font-medium tracking-wide text-foreground/80">Open-source · AGPL-3.0</span>
               <span className="h-3 w-px bg-border/50" />
               <a
                 href="https://github.com/sup3rus3r/obsidian-ai"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Github className="h-3 w-3" />Star on GitHub
               </a>
@@ -444,7 +450,7 @@ export function Hero() {
               transition={{ delay: 0.15 }}
             >
               The orchestration layer{" "}
-              <span className="text-muted-foreground/45">
+              <span className="text-foreground/70">
                 for production AI agents.
               </span>
             </motion.h1>
@@ -477,13 +483,14 @@ export function Hero() {
           </motion.div>
 
           {/* Right: bento grid */}
-          <div className="hidden lg:block flex-1 self-stretch relative rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(74,222,128,0.30)", boxShadow: "0 0 20px rgba(74,222,128,0.07), 0 0 60px rgba(74,222,128,0.04), inset 0 0 30px rgba(74,222,128,0.02)" }}>
+          <div className="hidden lg:block flex-1 self-stretch relative rounded-2xl overflow-hidden border border-border shadow-lg">
             {/* Fading grid background */}
             <div
               className="absolute inset-0"
               style={{
-                backgroundImage: `linear-gradient(to right, hsl(var(--foreground)/0.06) 1px, transparent 1px),
-                                  linear-gradient(to bottom, hsl(var(--foreground)/0.06) 1px, transparent 1px)`,
+                backgroundImage: `linear-gradient(to right, var(--foreground) 1px, transparent 1px),
+                                  linear-gradient(to bottom, var(--foreground) 1px, transparent 1px)`,
+                opacity: 0.06,
                 backgroundSize: "64px 64px",
                 WebkitMaskImage: "radial-gradient(ellipse 90% 90% at 50% 50%, black 30%, transparent 100%)",
                 maskImage: "radial-gradient(ellipse 90% 90% at 50% 50%, black 30%, transparent 100%)",
@@ -494,40 +501,40 @@ export function Hero() {
 
               {/* [0,0] span-2 wide — Agents & Teams */}
               <motion.div
-                className="col-span-2 row-span-1 rounded-xl border border-border/25 bg-card/20 backdrop-blur-sm p-4 flex flex-col justify-between"
+                className="col-span-2 row-span-1 rounded-xl border border-border bg-card/70 backdrop-blur-sm p-4 flex flex-col justify-between"
                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.38 }}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/30 border border-border/20">
-                    <Users className="h-3.5 w-3.5 text-foreground/60" />
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted border border-border">
+                    <Users className="h-3.5 w-3.5 text-foreground" />
                   </div>
-                  <span className="text-[13px] font-semibold text-foreground/80">Agent orchestration</span>
+                  <span className="text-[13px] font-semibold text-foreground">Agent orchestration</span>
                 </div>
-                <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                <p className="text-[13px] text-muted-foreground leading-relaxed">
                   Solo agents, coordinated teams, or visual DAG pipelines — pick the pattern that fits.
                 </p>
               </motion.div>
 
               {/* [0,2] tall — Memory */}
               <motion.div
-                className="col-span-1 row-span-2 rounded-xl border border-border/25 bg-card/20 backdrop-blur-sm p-4 flex flex-col gap-3"
+                className="col-span-1 row-span-2 rounded-xl border border-border bg-card/70 backdrop-blur-sm p-4 flex flex-col gap-3"
                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.44 }}
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/30 border border-border/20">
-                  <Brain className="h-4 w-4 text-foreground/60" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted border border-border">
+                  <Brain className="h-4 w-4 text-foreground" />
                 </div>
                 <div>
-                  <div className="text-[13px] font-semibold text-foreground/80 mb-1">Long-term memory</div>
-                  <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                  <div className="text-[13px] font-semibold text-foreground mb-1">Long-term memory</div>
+                  <p className="text-[13px] text-muted-foreground leading-relaxed">
                     Agents learn and remember across sessions. Model-extracted, editable, bounded.
                   </p>
                 </div>
                 <div className="mt-auto flex flex-col gap-1.5">
                   {["Preference", "Context", "Decision", "Correction"].map((c) => (
-                    <div key={c} className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
-                      <div className="h-1 w-1 rounded-full bg-foreground/20" />{c}
+                    <div key={c} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <div className="h-1 w-1 rounded-full bg-foreground/40" />{c}
                     </div>
                   ))}
                 </div>
@@ -535,44 +542,44 @@ export function Hero() {
 
               {/* [1,0] — Knowledge */}
               <motion.div
-                className="col-span-1 row-span-1 rounded-xl border border-border/25 bg-card/20 backdrop-blur-sm p-4 flex flex-col justify-between"
+                className="col-span-1 row-span-1 rounded-xl border border-border bg-card/70 backdrop-blur-sm p-4 flex flex-col justify-between"
                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.48 }}
               >
-                <BookOpen className="h-4 w-4 text-foreground/50 mb-2" />
+                <BookOpen className="h-4 w-4 text-foreground/80 mb-2" />
                 <div>
-                  <div className="text-[12px] font-semibold text-foreground/80">Knowledge bases</div>
-                  <div className="text-[10px] text-muted-foreground/55 mt-0.5">RAG-powered, per-agent</div>
+                  <div className="text-[12px] font-semibold text-foreground">Knowledge bases</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">RAG-powered, per-agent</div>
                 </div>
               </motion.div>
 
               {/* [1,1] — Tools */}
               <motion.div
-                className="col-span-1 row-span-1 rounded-xl border border-border/25 bg-card/20 backdrop-blur-sm p-4 flex flex-col justify-between"
+                className="col-span-1 row-span-1 rounded-xl border border-border bg-card/70 backdrop-blur-sm p-4 flex flex-col justify-between"
                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.52 }}
               >
-                <Wrench className="h-4 w-4 text-foreground/50 mb-2" />
+                <Wrench className="h-4 w-4 text-foreground/80 mb-2" />
                 <div>
-                  <div className="text-[12px] font-semibold text-foreground/80">Tools & MCP</div>
-                  <div className="text-[10px] text-muted-foreground/55 mt-0.5">Custom Python · REST · stdio</div>
+                  <div className="text-[12px] font-semibold text-foreground">Tools & MCP</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">Custom Python · REST · stdio</div>
                 </div>
               </motion.div>
 
               {/* [2,0] span-2 — Security */}
               <motion.div
-                className="col-span-2 row-span-1 rounded-xl border border-border/25 bg-card/20 backdrop-blur-sm p-4 flex items-center gap-4"
+                className="col-span-2 row-span-1 rounded-xl border border-border bg-card/70 backdrop-blur-sm p-4 flex items-center gap-4"
                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.56 }}
               >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/30 border border-border/20">
-                  <Shield className="h-4 w-4 text-foreground/60" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted border border-border">
+                  <Shield className="h-4 w-4 text-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-semibold text-foreground/80 mb-1">Security-first</div>
+                  <div className="text-[12px] font-semibold text-foreground mb-1">Security-first</div>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                     {["2FA · TOTP", "AES encryption", "Fernet at rest", "JWT auth", "RBAC"].map((t) => (
-                      <span key={t} className="text-[10px] text-muted-foreground/50">{t}</span>
+                      <span key={t} className="text-[11px] text-muted-foreground">{t}</span>
                     ))}
                   </div>
                 </div>
@@ -580,14 +587,14 @@ export function Hero() {
 
               {/* [2,2] — Artifacts */}
               <motion.div
-                className="col-span-1 row-span-1 rounded-xl border border-border/25 bg-card/20 backdrop-blur-sm p-4 flex flex-col justify-between"
+                className="col-span-1 row-span-1 rounded-xl border border-border bg-card/70 backdrop-blur-sm p-4 flex flex-col justify-between"
                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.60 }}
               >
-                <FileCode2 className="h-4 w-4 text-foreground/50 mb-2" />
+                <FileCode2 className="h-4 w-4 text-foreground/80 mb-2" />
                 <div>
-                  <div className="text-[12px] font-semibold text-foreground/80">Artifacts</div>
-                  <div className="text-[10px] text-muted-foreground/55 mt-0.5">HTML · JSX · SVG · live</div>
+                  <div className="text-[12px] font-semibold text-foreground">Artifacts</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">HTML · JSX · SVG · live</div>
                 </div>
               </motion.div>
 
@@ -602,34 +609,34 @@ export function Hero() {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.55, delay: 0.35 }}
-            className="rounded-2xl border border-border/30 bg-card/30 backdrop-blur-2xl shadow-2xl overflow-hidden ring-1 ring-white/5"
+            className="rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
           >
             {/* Window chrome */}
-            <div className="flex items-center gap-2 border-b border-border/20 bg-muted/10 px-4 py-2.5">
+            <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
               <div className="flex gap-1.5">
-                <div className="h-2.5 w-2.5 rounded-full bg-red-500/40" />
-                <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/40" />
-                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/40" />
+                <div className="h-2.5 w-2.5 rounded-full bg-red-500/70" />
+                <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/70" />
+                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500/70" />
               </div>
-              <span className="ml-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40">
+              <span className="ml-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Obsidian AI
               </span>
               <div className="ml-auto flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[10px] text-muted-foreground/40">live</span>
+                <span className="text-[10px] text-muted-foreground">live</span>
               </div>
             </div>
 
             {/* Tab bar */}
-            <div className="flex border-b border-border/15 bg-muted/5 overflow-x-auto scrollbar-none">
+            <div className="flex border-b border-border bg-muted/20 overflow-x-auto scrollbar-none">
               {DEMOS.map(({ id, label, icon: Icon }, i) => (
                 <button
                   key={id}
                   onClick={() => handleTab(i)}
                   className={`flex shrink-0 items-center gap-1.5 px-4 py-2.5 text-[11px] font-medium border-b-2 transition-all ${
                     activeIdx === i
-                      ? "border-primary text-foreground bg-background/20"
-                      : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-background/10"
+                      ? "border-primary text-foreground bg-background/60"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:bg-background/30"
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -640,7 +647,7 @@ export function Hero() {
                 <AnimatePresence mode="wait">
                   <motion.span
                     key={activeIdx}
-                    className="text-[10px] text-muted-foreground/40 italic"
+                    className="text-[10px] text-muted-foreground italic"
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}

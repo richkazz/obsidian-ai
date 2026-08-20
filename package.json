@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix frontend\" \"npm run api\" \"npm run wa-bridge\"",
-    "api": "cd backend && uv run uvicorn main:app --reload --port 8001",
+    "api": "cd backend && uv run uvicorn main:app --port 8001",
     "wa-bridge": "cd wa-bridge && node index.js"
   },
   "keywords": [],
