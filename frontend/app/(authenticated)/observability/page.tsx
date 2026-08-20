@@ -259,7 +259,7 @@ export default function ObservabilityPage() {
     <div className="h-full overflow-y-auto p-8 w-full space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight uppercase">Observability</h1>
+          <h1 className="text-2xl font-bold tracking-tight uppercase">Observability</h1>
           <p className="text-sm text-muted-foreground mt-1">Token usage, latency, cost, and tool analytics</p>
         </div>
         <div className="flex items-center gap-2">

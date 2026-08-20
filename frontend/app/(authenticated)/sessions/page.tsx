@@ -143,7 +143,7 @@ export default function SessionsPage() {
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold tracking-tight uppercase">Sessions</h1>
+            <h1 className="text-2xl font-bold tracking-tight uppercase">Sessions</h1>
             <Badge variant="secondary" className="text-xs">
               {filteredSessions.length}
             </Badge>

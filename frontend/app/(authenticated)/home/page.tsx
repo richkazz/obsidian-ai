@@ -168,7 +168,7 @@ export default function HomePage() {
   return (
     <div className="h-full overflow-y-auto p-8 w-full space-y-8">
       {/* Welcome */}
-      <h1 className="text-3xl font-bold tracking-tight uppercase">
+      <h1 className="text-2xl font-bold tracking-tight uppercase">
         Welcome {session?.user?.name || "back"}
       </h1>
 

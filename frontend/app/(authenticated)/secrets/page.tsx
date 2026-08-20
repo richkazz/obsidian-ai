@@ -187,7 +187,7 @@ export default function SecretsPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold tracking-tight uppercase">Secrets Vault</h1>
+              <h1 className="text-2xl font-bold tracking-tight uppercase">Secrets Vault</h1>
               <Badge variant="secondary">{secrets.length}</Badge>
             </div>
             <p className="text-sm text-muted-foreground">

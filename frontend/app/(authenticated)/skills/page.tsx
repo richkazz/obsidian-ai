@@ -182,7 +182,7 @@ export default function SkillsPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold tracking-tight uppercase">Skills</h1>
+              <h1 className="text-2xl font-bold tracking-tight uppercase">Skills</h1>
               <Badge variant="secondary">{skills.length}</Badge>
             </div>
             <p className="text-sm text-muted-foreground">

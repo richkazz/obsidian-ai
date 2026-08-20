@@ -182,7 +182,7 @@ export default function PromptsPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold tracking-tight uppercase">Prompt Vault</h1>
+              <h1 className="text-2xl font-bold tracking-tight uppercase">Prompt Vault</h1>
               <Badge variant="secondary">{prompts.length}</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
