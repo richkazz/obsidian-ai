@@ -77,7 +77,7 @@ Build, deploy, and orchestrate AI agents, multi-agent teams, and automated workf
 
 ---
 
-![image](docs/images/main.png)
+![image](docs/images/main2.png)
 ![image](docs/images/inside.png)
 
 ## Why Obsidian AI?
