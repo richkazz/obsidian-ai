@@ -410,7 +410,10 @@ async def stream_qr(
 
     async def event_generator():
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            # No read timeout: this stream stays open and idle while the user
+            # scans the QR code, which can take well over 2 minutes.
+            timeout = httpx.Timeout(connect=10, read=None, write=10, pool=10)
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream("GET", f"{SIDECAR_URL}/channels/{channel_id}/events") as resp:
                     async for line in resp.aiter_lines():
                         if line.startswith("data:"):

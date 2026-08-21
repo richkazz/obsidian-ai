@@ -21,6 +21,18 @@ if DATABASE_TYPE == "mongo":
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+_cached_admin_id: str | None = None
+
+
+async def _get_admin_user_id(mongo_db) -> str | None:
+    """Return the user_id of the first admin account (cached after first call)."""
+    global _cached_admin_id
+    if _cached_admin_id:
+        return _cached_admin_id
+    admin = await mongo_db["users"].find_one({"role": "admin"})
+    if admin:
+        _cached_admin_id = str(admin["_id"])
+    return _cached_admin_id
 
 def _user_to_admin_response(user, is_mongo=False) -> AdminUserResponse:
     perms = get_user_permissions(user, is_mongo=is_mongo)

@@ -688,8 +688,8 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-150 max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-150 max-h-[85vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
           <DialogTitle>{isEditing ? "Edit Agent" : "Create Agent"}</DialogTitle>
           <DialogDescription>
             {isEditing
@@ -698,7 +698,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-4 py-4 px-6 overflow-y-auto flex-1 min-h-0">
           <div className="grid gap-2">
             <Label htmlFor="agent-name">Name</Label>
             <Input
@@ -812,7 +812,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
               onChange={(e) => setSystemPrompt(e.target.value)}
               placeholder="You are a helpful AI assistant..."
               rows={5}
-              className="resize-none"
+              className="resize-none max-h-64 overflow-y-auto"
             />
           </div>
 
@@ -1687,9 +1687,9 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
           )}
         </div>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p className="px-6 shrink-0 text-sm text-destructive">{error}</p>}
 
-        <DialogFooter>
+        <DialogFooter className="px-6 py-4 border-t border-border shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
