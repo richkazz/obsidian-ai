@@ -93,7 +93,9 @@ export interface ReasoningStep {
 export interface AgentStep {
   agent_id: string
   agent_name: string
-  step: "routing" | "responding" | "completed" | "synthesizing" | "selected"
+  step: "routing" | "responding" | "completed" | "synthesizing" | "selected" | "failed"
+  router_decision?: string
+  error?: string
 }
 
 export interface ToolRound {

@@ -45,6 +45,10 @@ dependencies = [
 gpu = [
     "flash-attn",  # Optional: speeds up Qwen3-TTS attention on CUDA GPUs; falls back to standard PyTorch attention without it
 ]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu124"
@@ -55,3 +59,7 @@ explicit = true
 torch = [{ index = "pytorch-cu124" }]
 torchvision = [{ index = "pytorch-cu124" }]
 torchaudio = [{ index = "pytorch-cu124" }]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

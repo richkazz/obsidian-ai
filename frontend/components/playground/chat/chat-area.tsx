@@ -37,6 +37,9 @@ export function ChatArea() {
   const upsertStreamingToolCall = usePlaygroundStore((s) => s.upsertStreamingToolCall)
   const streamingAgentStep = usePlaygroundStore((s) => s.streamingAgentStep)
   const setStreamingAgentStep = usePlaygroundStore((s) => s.setStreamingAgentStep)
+  const streamingAgentStepLog = usePlaygroundStore((s) => s.streamingAgentStepLog)
+  const appendStreamingAgentStepLog = usePlaygroundStore((s) => s.appendStreamingAgentStepLog)
+  const clearStreamingAgentStepLog = usePlaygroundStore((s) => s.clearStreamingAgentStepLog)
   const streamingToolRound = usePlaygroundStore((s) => s.streamingToolRound)
   const setStreamingToolRound = usePlaygroundStore((s) => s.setStreamingToolRound)
   const streamingKBContext = usePlaygroundStore((s) => s.streamingKBContext)
@@ -152,6 +155,7 @@ export function ChatArea() {
     setStreamingReasoning("")
     setStreamingToolCalls([])
     setStreamingAgentStep(null)
+    clearStreamingAgentStepLog()
     setStreamingToolRound(null)
     setStreamingKBContext([])
     setStreamingTerminalComplete(false)
@@ -192,6 +196,7 @@ export function ChatArea() {
           setStreamingReasoning("")
           setStreamingToolCalls([])
           setStreamingAgentStep(null)
+          clearStreamingAgentStepLog()
           setStreamingToolRound(null)
           setStreamingKBContext([])
           setHITLApprovalRequired(null)
@@ -258,7 +263,7 @@ export function ChatArea() {
             created_at: new Date().toISOString(),
           })
         },
-        (step) => setStreamingAgentStep(step),
+        (step) => appendStreamingAgentStepLog(step),
         (agentId, agentName, content) => {
           // Collaborate mode: add each non-final agent's response as a completed message
           addMessage({
@@ -332,6 +337,7 @@ export function ChatArea() {
       setIsStreaming(false)
       setAbortController(null)
       setStreamingAgentStep(null)
+      clearStreamingAgentStepLog()
       setStreamingToolRound(null)
     }
   }
@@ -340,6 +346,7 @@ export function ChatArea() {
     abortController?.abort()
     setIsStreaming(false)
     setStreamingAgentStep(null)
+    clearStreamingAgentStepLog()
     // Save whatever was streamed so far
     const state = usePlaygroundStore.getState()
     const content = state.streamingContent
@@ -400,6 +407,7 @@ export function ChatArea() {
           streamingReasoning={streamingReasoning}
           streamingToolCalls={streamingToolCalls}
           streamingAgentStep={streamingAgentStep}
+          streamingAgentStepLog={streamingAgentStepLog}
           streamingToolRound={streamingToolRound}
           streamingKBContext={streamingKBContext}
           isStreaming={isStreaming}

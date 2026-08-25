@@ -11,6 +11,7 @@ interface MessageListProps {
   streamingReasoning: string
   streamingToolCalls: ToolCall[]
   streamingAgentStep?: AgentStep | null
+  streamingAgentStepLog?: AgentStep[]
   streamingToolRound?: ToolRound | null
   streamingKBContext?: { id: string; name: string }[]
   isStreaming: boolean
@@ -38,6 +39,7 @@ export function MessageList({
   streamingReasoning,
   streamingToolCalls,
   streamingAgentStep,
+  streamingAgentStepLog,
   streamingToolRound,
   streamingKBContext,
   isStreaming,
@@ -82,7 +84,7 @@ export function MessageList({
     if (isAtBottom && el) {
       el.scrollTop = el.scrollHeight
     }
-  }, [messages, streamingContent, streamingToolCalls, streamingReasoning, streamingAgentStep, isAtBottom])
+  }, [messages, streamingContent, streamingToolCalls, streamingReasoning, streamingAgentStep, streamingAgentStepLog, isAtBottom])
 
   const scrollToBottom = useCallback(() => {
     setIsAtBottom(true)
@@ -129,18 +131,53 @@ export function MessageList({
           return <MessageBubble key={message.id} message={message} />
         })}
 
-        {/* Agent step indicator (team mode) */}
-        {isStreaming && streamingAgentStep && (
-          <div className="flex items-center gap-2 px-2 py-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-xs text-muted-foreground">
-              {streamingAgentStep.step === "routing" && "Routing query..."}
-              {streamingAgentStep.step === "responding" && `${streamingAgentStep.agent_name} is responding...`}
-              {streamingAgentStep.step === "selected" && `Selected ${streamingAgentStep.agent_name}`}
-              {streamingAgentStep.step === "completed" && `${streamingAgentStep.agent_name} completed`}
-              {streamingAgentStep.step === "synthesizing" && "Synthesizing responses..."}
-            </span>
+        {/* Agent step indicator (team mode) — a running log when multiple steps have
+            fired (route mode's parallel agents), otherwise a single pulsing line. */}
+        {isStreaming && streamingAgentStepLog && streamingAgentStepLog.length > 1 ? (
+          <div className="flex flex-col gap-1 px-2 py-1.5">
+            {streamingAgentStepLog.map((step, i) => {
+              const isLatest = i === streamingAgentStepLog.length - 1
+              const isDone = step.step === "completed" || step.step === "selected"
+              const isFailed = step.step === "failed"
+              return (
+                <div key={`${step.agent_id}-${step.step}-${i}`} className="flex items-center gap-2">
+                  <span
+                    className={
+                      isFailed
+                        ? "h-1.5 w-1.5 rounded-full bg-destructive"
+                        : isDone
+                        ? "h-1.5 w-1.5 rounded-full bg-emerald-500"
+                        : isLatest
+                        ? "h-1.5 w-1.5 rounded-full bg-primary animate-pulse"
+                        : "h-1.5 w-1.5 rounded-full bg-muted-foreground/40"
+                    }
+                  />
+                  <span className={isFailed ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+                    {step.step === "routing" && "Routing query..."}
+                    {step.step === "responding" && `${step.agent_name} is responding...`}
+                    {step.step === "selected" && `Selected ${step.agent_name}${step.router_decision ? ` (${step.router_decision})` : ""}`}
+                    {step.step === "completed" && `${step.agent_name} completed`}
+                    {step.step === "failed" && `${step.agent_name} failed${step.error ? `: ${step.error}` : ""}`}
+                    {step.step === "synthesizing" && "Synthesizing responses..."}
+                  </span>
+                </div>
+              )
+            })}
           </div>
+        ) : (
+          isStreaming && streamingAgentStep && (
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <span className={streamingAgentStep.step === "failed" ? "h-1.5 w-1.5 rounded-full bg-destructive" : "h-1.5 w-1.5 rounded-full bg-primary animate-pulse"} />
+              <span className={streamingAgentStep.step === "failed" ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+                {streamingAgentStep.step === "routing" && "Routing query..."}
+                {streamingAgentStep.step === "responding" && `${streamingAgentStep.agent_name} is responding...`}
+                {streamingAgentStep.step === "selected" && `Selected ${streamingAgentStep.agent_name}`}
+                {streamingAgentStep.step === "completed" && `${streamingAgentStep.agent_name} completed`}
+                {streamingAgentStep.step === "failed" && `${streamingAgentStep.agent_name} failed${streamingAgentStep.error ? `: ${streamingAgentStep.error}` : ""}`}
+                {streamingAgentStep.step === "synthesizing" && "Synthesizing responses..."}
+              </span>
+            </div>
+          )
         )}
 
         {/* Streaming message */}

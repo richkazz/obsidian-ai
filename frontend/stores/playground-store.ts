@@ -35,6 +35,7 @@ interface PlaygroundState {
   streamingReasoning: string
   streamingToolCalls: ToolCall[]
   streamingAgentStep: AgentStep | null
+  streamingAgentStepLog: AgentStep[]
   streamingToolRound: ToolRound | null
   streamingKBContext: { id: string; name: string }[]
   abortController: AbortController | null
@@ -92,6 +93,8 @@ interface PlaygroundState {
   setStreamingToolCalls: (toolCalls: ToolCall[]) => void
   upsertStreamingToolCall: (toolCall: ToolCall) => void
   setStreamingAgentStep: (step: AgentStep | null) => void
+  appendStreamingAgentStepLog: (step: AgentStep) => void
+  clearStreamingAgentStepLog: () => void
   setStreamingToolRound: (round: ToolRound | null) => void
   setStreamingKBContext: (kbs: { id: string; name: string }[]) => void
   setAbortController: (controller: AbortController | null) => void
@@ -161,6 +164,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set, get) => ({
   streamingReasoning: "",
   streamingToolCalls: [],
   streamingAgentStep: null,
+  streamingAgentStepLog: [],
   streamingToolRound: null,
   streamingKBContext: [],
   abortController: null,
@@ -235,6 +239,17 @@ export const usePlaygroundStore = create<PlaygroundState>((set, get) => ({
       return { streamingToolCalls: [...s.streamingToolCalls, toolCall] }
     }),
   setStreamingAgentStep: (step) => set({ streamingAgentStep: step }),
+  appendStreamingAgentStepLog: (step) =>
+    set((s) => {
+      // "completed"/"selected" steps are terminal per-agent — dedupe by agent_id+step
+      // so a duplicate event (e.g. retried SSE chunk) doesn't double up the log.
+      const key = (s0: AgentStep) => `${s0.agent_id}:${s0.step}`
+      if (s.streamingAgentStepLog.some((s0) => key(s0) === key(step))) {
+        return { streamingAgentStep: step }
+      }
+      return { streamingAgentStep: step, streamingAgentStepLog: [...s.streamingAgentStepLog, step] }
+    }),
+  clearStreamingAgentStepLog: () => set({ streamingAgentStepLog: [] }),
   setStreamingToolRound: (round) => set({ streamingToolRound: round }),
   setStreamingKBContext: (kbs) => set({ streamingKBContext: kbs }),
   setAbortController: (controller) => set({ abortController: controller }),
@@ -314,7 +329,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set, get) => ({
   clearChat: () => set({
     messages: [], selectedSessionId: null,
     streamingContent: "", streamingReasoning: "", streamingToolCalls: [],
-    streamingAgentStep: null, streamingToolRound: null, streamingKBContext: [],
+    streamingAgentStep: null, streamingAgentStepLog: [], streamingToolRound: null, streamingKBContext: [],
     streamingTerminal: "", streamingTerminalComplete: false, streamingFileTree: null,
     streamingSourceUrls: [], streamingPlan: null, streamingJsx: "", streamingJsxComplete: false,
     sessionTokens: null, pendingHITLApproval: null, pendingToolProposal: null, generatingTool: null,
@@ -344,6 +359,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set, get) => ({
       streamingReasoning: "",
       streamingToolCalls: [],
       streamingAgentStep: null,
+      streamingAgentStepLog: [],
       streamingToolRound: null,
       streamingKBContext: [],
       abortController: null,

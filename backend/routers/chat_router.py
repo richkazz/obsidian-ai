@@ -1557,6 +1557,47 @@ def _build_memory_injection_dicts(memories: list[dict]) -> str:
     return f"\n\n## What I know about you:\n{lines}"
 
 
+_TEAMMATE_MEMORY_CAP_PER_AGENT = 5  # keep this tight — read-only context, not full memory
+
+
+def _build_teammates_memory_injection(db, current_agent_id: int, agents_with_providers, user_id: int) -> str:
+    """Read-only view of each OTHER team member's own memory, so a teammate's
+    established facts/preferences are visible as context during a team chat —
+    without merging memory into one shared pool (no new data model, no
+    cross-team leakage: this only ever reads what each agent already knows)."""
+    sections = []
+    for ag, _ in agents_with_providers:
+        if ag.id == current_agent_id:
+            continue
+        mems = db.query(AgentMemory).filter(
+            AgentMemory.agent_id == ag.id,
+            AgentMemory.user_id == user_id,
+        ).order_by(AgentMemory.created_at.desc()).limit(_TEAMMATE_MEMORY_CAP_PER_AGENT).all()
+        if mems:
+            lines = "\n".join(f"  - [{m.category}] {m.value}" for m in mems)
+            sections.append(f"- {ag.name} knows:\n{lines}")
+    if not sections:
+        return ""
+    return "\n\n## What your teammates know:\n" + "\n".join(sections)
+
+
+async def _build_teammates_memory_injection_mongo(mongo_db, current_agent_id: str, agents_with_providers, user_id: str) -> str:
+    """Mongo counterpart of _build_teammates_memory_injection."""
+    sections = []
+    for ag, _ in agents_with_providers:
+        ag_id = str(ag["_id"])
+        if ag_id == current_agent_id:
+            continue
+        mems = await AgentMemoryCollection.find_by_agent_user(mongo_db, ag_id, user_id)
+        mems = mems[:_TEAMMATE_MEMORY_CAP_PER_AGENT]
+        if mems:
+            lines = "\n".join(f"  - [{m.get('category', 'context')}] {m['value']}" for m in mems)
+            sections.append(f"- {ag.get('name', 'Agent')} knows:\n{lines}")
+    if not sections:
+        return ""
+    return "\n\n## What your teammates know:\n" + "\n".join(sections)
+
+
 def _agent_supports_skills(provider_record, model_id: str | None) -> bool:
     """Skills are modeled on Anthropic's Agent Skills concept (progressive-
     disclosure instruction bundles) and are only meaningful for Claude models
@@ -1930,18 +1971,19 @@ async def _chat_sqlite(request: ChatRequest, current_user: TokenData, db: DBSess
 
         mode = team.mode or "coordinate"
         session_id = int(request.session_id)
+        _team_sandbox_cid = team.sandbox_container_id if team.sandbox_enabled else None
 
         if mode == "coordinate":
             return EventSourceResponse(
-                _team_chat_coordinate(agents_with_providers, messages, db, session_id, start_time, request.message)
+                _team_chat_coordinate(agents_with_providers, messages, db, session_id, start_time, request.message, team_sandbox_container_id=_team_sandbox_cid)
             )
         elif mode == "route":
             return EventSourceResponse(
-                _team_chat_route(agents_with_providers, messages, db, session_id, start_time, request.message)
+                _team_chat_route(agents_with_providers, messages, db, session_id, start_time, request.message, team_sandbox_container_id=_team_sandbox_cid)
             )
         elif mode == "collaborate":
             return EventSourceResponse(
-                _team_chat_collaborate(agents_with_providers, messages, db, session_id, start_time, request.message)
+                _team_chat_collaborate(agents_with_providers, messages, db, session_id, start_time, request.message, team_sandbox_container_id=_team_sandbox_cid)
             )
         else:
             raise HTTPException(status_code=400, detail=f"Unknown team mode: {mode}")
@@ -2264,7 +2306,7 @@ def _parse_tool_proposal_args(tc) -> tuple[dict, str, str, str, dict, dict]:
     return args, name, description, handler_type, parameters, handler_config
 
 
-async def _stream_response(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, tools=None, kb_meta=None, agent=None, edit_target=None, past_messages=None):
+async def _stream_response(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, tools=None, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None):
     """Generator yielding SSE events for streaming response, with tool execution loop."""
     full_content = ""
     reasoning_parts = []
@@ -2631,7 +2673,7 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
 
                 # Execute the tool
                 _tool_start = time.time()
-                _sandbox_cid = getattr(agent, "sandbox_container_id", None) if agent else None
+                _sandbox_cid = sandbox_container_id_override or (getattr(agent, "sandbox_container_id", None) if agent else None)
                 if is_builtin_tool(tc.name):
                     result = await execute_builtin_tool(tc.name, tc.arguments)
                 elif is_sandbox_tool(tc.name):
@@ -2769,7 +2811,7 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
         }
 
 
-async def _stream_response_with_mcp(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, native_tools, mcp_server_configs, kb_meta=None, agent=None, edit_target=None, past_messages=None):
+async def _stream_response_with_mcp(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, native_tools, mcp_server_configs, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None):
     """Like _stream_response but connects to MCP servers for tool discovery and execution."""
     full_content = ""
     reasoning_parts = []
@@ -3076,7 +3118,7 @@ async def _stream_response_with_mcp(llm, messages, system_prompt, db, session_id
                     yield {"event": "tool_call", "data": json.dumps({"id": tc.id, "name": tc.name, "arguments": tc.arguments, "status": "running"})}
 
                     _tool_start = time.time()
-                    _sandbox_cid = getattr(agent, "sandbox_container_id", None) if agent else None
+                    _sandbox_cid = sandbox_container_id_override or (getattr(agent, "sandbox_container_id", None) if agent else None)
                     result = await _execute_mcp_or_native_tool(tc.name, tc.arguments, mcp_connections, db, sandbox_container_id=_sandbox_cid)
                     _span_type = "mcp_call" if parse_mcp_tool_name(tc.name) else "tool_call"
                     _tc.record_tool_span(
@@ -3198,12 +3240,21 @@ def _norm_tool_args(args) -> str:
         return str(args)
 
 
-async def _chat_with_tools(llm, messages: list, system_prompt: str | None, tools: list | None, db, sandbox_container_id: str | None = None) -> str:
+async def _chat_with_tools(llm, messages: list, system_prompt: str | None, tools: list | None, db, sandbox_container_id: str | None = None, team_context: tuple | None = None) -> str:
     """Non-streaming chat that executes tool calls in a loop until a final text response.
 
     Used by team modes (route/collaborate) where agents need to use tools
     but their responses aren't streamed to the frontend.
+
+    team_context, when set, is (agents_with_providers, current_agent_id, delegation_depth)
+    and injects the call_teammate delegation tool so this agent can hand off a
+    sub-question to a named teammate mid-turn (see team_delegation_tools.py).
     """
+    from team_delegation_tools import CALL_TEAMMATE_TOOL_SCHEMA, is_call_teammate_tool, execute_call_teammate
+
+    if team_context:
+        tools = list(tools or []) + [CALL_TEAMMATE_TOOL_SCHEMA]
+
     chat_messages = list(messages)
     for _round in range(MAX_TOOL_ROUNDS):
         response = await llm.chat(chat_messages, system_prompt=system_prompt, tools=tools)
@@ -3223,7 +3274,10 @@ async def _chat_with_tools(llm, messages: list, system_prompt: str | None, tools
             tool_calls=[LLMToolCall(id=tc.id, name=tc.name, arguments=tc.arguments) for tc in unique_calls],
         ))
         for tc in unique_calls:
-            if is_builtin_tool(tc.name):
+            if team_context and is_call_teammate_tool(tc.name):
+                _agents_with_providers, _current_agent_id, _depth = team_context
+                result = await execute_call_teammate(tc.arguments, _agents_with_providers, _current_agent_id, "sqlite", db, depth=_depth)
+            elif is_builtin_tool(tc.name):
                 result = await execute_builtin_tool(tc.name, tc.arguments)
             elif is_sandbox_tool(tc.name):
                 result = await execute_sandbox_tool(tc.name, tc.arguments, sandbox_container_id) if sandbox_container_id else json.dumps({"error": "Sandbox is not running for this agent"})
@@ -3235,8 +3289,14 @@ async def _chat_with_tools(llm, messages: list, system_prompt: str | None, tools
     return final.content or ""
 
 
-async def _chat_with_tools_mongo(llm, messages: list, system_prompt: str | None, tools: list | None, mongo_db, sandbox_container_id: str | None = None) -> str:
-    """Non-streaming chat with tool execution loop (MongoDB version)."""
+async def _chat_with_tools_mongo(llm, messages: list, system_prompt: str | None, tools: list | None, mongo_db, sandbox_container_id: str | None = None, team_context: tuple | None = None) -> str:
+    """Non-streaming chat with tool execution loop (MongoDB version).
+    team_context: see _chat_with_tools's docstring."""
+    from team_delegation_tools import CALL_TEAMMATE_TOOL_SCHEMA, is_call_teammate_tool, execute_call_teammate
+
+    if team_context:
+        tools = list(tools or []) + [CALL_TEAMMATE_TOOL_SCHEMA]
+
     chat_messages = list(messages)
     for _round in range(MAX_TOOL_ROUNDS):
         response = await llm.chat(chat_messages, system_prompt=system_prompt, tools=tools)
@@ -3255,7 +3315,10 @@ async def _chat_with_tools_mongo(llm, messages: list, system_prompt: str | None,
             tool_calls=[LLMToolCall(id=tc.id, name=tc.name, arguments=tc.arguments) for tc in unique_calls],
         ))
         for tc in unique_calls:
-            if is_builtin_tool(tc.name):
+            if team_context and is_call_teammate_tool(tc.name):
+                _agents_with_providers, _current_agent_id, _depth = team_context
+                result = await execute_call_teammate(tc.arguments, _agents_with_providers, _current_agent_id, "mongo", mongo_db, depth=_depth)
+            elif is_builtin_tool(tc.name):
                 result = await execute_builtin_tool(tc.name, tc.arguments)
             elif is_sandbox_tool(tc.name):
                 result = await execute_sandbox_tool(tc.name, tc.arguments, sandbox_container_id) if sandbox_container_id else json.dumps({"error": "Sandbox is not running for this agent"})
@@ -3310,7 +3373,7 @@ async def _chat_with_tools_and_mcp_mongo(llm, messages: list, system_prompt: str
         return final.content or ""
 
 
-async def _team_chat_coordinate(agents_with_providers, messages, db, session_id, start_time, user_message):
+async def _team_chat_coordinate(agents_with_providers, messages, db, session_id, start_time, user_message, team_sandbox_container_id=None):
     """Coordinate mode: a router LLM picks the best agent, then that agent responds."""
     try:
         # Use the first agent's provider as the router LLM
@@ -3394,17 +3457,20 @@ async def _team_chat_coordinate(agents_with_providers, messages, db, session_id,
             "Only call each tool once — do not call the same tool with the same or similar arguments more than once."
         )
         coord_system_prompt = _prepend_team_context(sel_agent.system_prompt, coord_note)
+        coord_system_prompt += _build_teammates_memory_injection(db, sel_agent.id, agents_with_providers, sel_agent.user_id)
 
         if mcp_configs:
             async for event in _stream_response_with_mcp(
                 sel_llm, messages, coord_system_prompt, db, session_id,
-                sel_agent.id, sel_provider, start_time, tools, mcp_configs
+                sel_agent.id, sel_provider, start_time, tools, mcp_configs,
+                agent=sel_agent, sandbox_container_id_override=team_sandbox_container_id,
             ):
                 yield event
         else:
             async for event in _stream_response(
                 sel_llm, messages, coord_system_prompt, db, session_id,
-                sel_agent.id, sel_provider, start_time, tools
+                sel_agent.id, sel_provider, start_time, tools,
+                agent=sel_agent, sandbox_container_id_override=team_sandbox_container_id,
             ):
                 yield event
 
@@ -3412,7 +3478,7 @@ async def _team_chat_coordinate(agents_with_providers, messages, db, session_id,
         yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
 
-async def _team_chat_route(agents_with_providers, messages, db, session_id, start_time, user_message):
+async def _team_chat_route(agents_with_providers, messages, db, session_id, start_time, user_message, team_sandbox_container_id=None):
     """Route mode: all agents respond in parallel, then a synthesizer merges the best answer."""
     try:
         # Emit routing step
@@ -3425,7 +3491,7 @@ async def _team_chat_route(agents_with_providers, messages, db, session_id, star
         _route_team_names = [ag.name for ag, _ in agents_with_providers]
         _route_n = len(_route_team_names)
 
-        async def get_agent_response(agent, provider):
+        async def get_agent_response_once(agent, provider):
             llm = _create_llm_for_provider(provider, agent.model_id or provider.model_id or "gpt-4o")
             tools = _build_tools_for_llm(agent, db)
             mcp_configs = _load_mcp_server_configs(agent, db)
@@ -3435,21 +3501,42 @@ async def _team_chat_route(agents_with_providers, messages, db, session_id, star
                 "Your response will be combined with the other specialists' responses to form the final answer."
             )
             effective_system_prompt = _prepend_team_context(agent.system_prompt, route_note)
+            effective_system_prompt += _build_teammates_memory_injection(db, agent.id, agents_with_providers, agent.user_id)
             if mcp_configs:
+                # NOTE: _chat_with_tools_and_mcp doesn't support sandbox tools at all (pre-existing
+                # limitation, not specific to teams) — only the native-tools-only path below does.
                 content = await _chat_with_tools_and_mcp(llm, messages, effective_system_prompt, tools, db, mcp_configs)
             else:
-                content = await _chat_with_tools(llm, messages, effective_system_prompt, tools, db, sandbox_container_id=getattr(agent, "sandbox_container_id", None))
-            return agent, provider, content
+                _sandbox_cid = team_sandbox_container_id or getattr(agent, "sandbox_container_id", None)
+                content = await _chat_with_tools(llm, messages, effective_system_prompt, tools, db, sandbox_container_id=_sandbox_cid, team_context=(agents_with_providers, agent.id, 0))
+            return content
+
+        async def get_agent_response(agent, provider):
+            # One retry on failure — a transient error (rate limit, timeout) in one
+            # independent parallel agent shouldn't silently drop that specialist's
+            # contribution when a single retry would likely succeed.
+            try:
+                content = await get_agent_response_once(agent, provider)
+                return agent, provider, content, None
+            except Exception as e:
+                try:
+                    content = await get_agent_response_once(agent, provider)
+                    return agent, provider, content, None
+                except Exception as e2:
+                    return agent, provider, None, str(e2)
 
         tasks = [get_agent_response(ag, pr) for ag, pr in agents_with_providers]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks)
 
-        # Collect successful responses
+        # Collect successful responses; surface failures instead of silently dropping them
         agent_responses = []
-        for result in results:
-            if isinstance(result, Exception):
+        for ag, pr, content, error in results:
+            if error is not None:
+                yield {
+                    "event": "agent_step",
+                    "data": json.dumps({"agent_id": str(ag.id), "agent_name": ag.name, "step": "failed", "error": error}),
+                }
                 continue
-            ag, pr, content = result
             agent_responses.append({
                 "agent_name": ag.name,
                 "agent_id": ag.id,
@@ -3584,7 +3671,7 @@ def _build_collaborate_system_prompt(agent_system_prompt: str | None, agent_name
     return _prepend_team_context(agent_system_prompt, role_note)
 
 
-async def _team_chat_collaborate(agents_with_providers, messages, db, session_id, start_time, user_message):
+async def _team_chat_collaborate(agents_with_providers, messages, db, session_id, start_time, user_message, team_sandbox_container_id=None):
     """Collaborate mode: agents run sequentially, each building on previous agents' outputs."""
     try:
         accumulated_context = []
@@ -3609,6 +3696,7 @@ async def _team_chat_collaborate(agents_with_providers, messages, db, session_id
             effective_system_prompt = _build_collaborate_system_prompt(
                 ag.system_prompt, ag.name, i, total, all_names[:i]
             )
+            effective_system_prompt += _build_teammates_memory_injection(db, ag.id, agents_with_providers, ag.user_id)
 
             # Build messages for this agent: original history + accumulated context from previous agents
             agent_messages = list(messages)  # copy original history
@@ -3627,12 +3715,14 @@ async def _team_chat_collaborate(agents_with_providers, messages, db, session_id
                 if mcp_configs:
                     stream = _stream_response_with_mcp(
                         llm, agent_messages, effective_system_prompt, db, session_id,
-                        ag.id, pr, start_time, tools, mcp_configs
+                        ag.id, pr, start_time, tools, mcp_configs,
+                        agent=ag, sandbox_container_id_override=team_sandbox_container_id,
                     )
                 else:
                     stream = _stream_response(
                         llm, agent_messages, effective_system_prompt, db, session_id,
-                        ag.id, pr, start_time, tools
+                        ag.id, pr, start_time, tools,
+                        agent=ag, sandbox_container_id_override=team_sandbox_container_id,
                     )
                 async for event in stream:
                     if event.get("event") == "message_complete" and contributing_agents:
@@ -3657,9 +3747,12 @@ async def _team_chat_collaborate(agents_with_providers, messages, db, session_id
             else:
                 # Non-final agents: get response with tool execution (not streamed)
                 if mcp_configs:
+                    # NOTE: _chat_with_tools_and_mcp doesn't support sandbox tools at all
+                    # (pre-existing limitation, not specific to teams).
                     content = await _chat_with_tools_and_mcp(llm, agent_messages, effective_system_prompt, tools, db, mcp_configs)
                 else:
-                    content = await _chat_with_tools(llm, agent_messages, effective_system_prompt, tools, db, sandbox_container_id=getattr(ag, "sandbox_container_id", None))
+                    _sandbox_cid = team_sandbox_container_id or getattr(ag, "sandbox_container_id", None)
+                    content = await _chat_with_tools(llm, agent_messages, effective_system_prompt, tools, db, sandbox_container_id=_sandbox_cid, team_context=(agents_with_providers, ag.id, 0))
                 accumulated_context.append({"agent_name": ag.name, "response": content})
                 contributing_agents.append({"id": str(ag.id), "name": ag.name})
                 # Emit intermediate output so the frontend can show each agent's contribution
@@ -3823,18 +3916,19 @@ async def _chat_mongo(request: ChatRequest, current_user: TokenData, start_time:
             raise HTTPException(status_code=400, detail="No agents in team have a configured provider")
 
         mode = team.get("mode", "coordinate")
+        _team_sandbox_cid_mongo = team.get("sandbox_container_id") if team.get("sandbox_enabled") else None
 
         if mode == "coordinate":
             return EventSourceResponse(
-                _team_chat_coordinate_mongo(agents_with_providers, messages, mongo_db, request.session_id, start_time, request.message)
+                _team_chat_coordinate_mongo(agents_with_providers, messages, mongo_db, request.session_id, start_time, request.message, team_sandbox_container_id=_team_sandbox_cid_mongo)
             )
         elif mode == "route":
             return EventSourceResponse(
-                _team_chat_route_mongo(agents_with_providers, messages, mongo_db, request.session_id, start_time, request.message)
+                _team_chat_route_mongo(agents_with_providers, messages, mongo_db, request.session_id, start_time, request.message, team_sandbox_container_id=_team_sandbox_cid_mongo)
             )
         elif mode == "collaborate":
             return EventSourceResponse(
-                _team_chat_collaborate_mongo(agents_with_providers, messages, mongo_db, request.session_id, start_time, request.message)
+                _team_chat_collaborate_mongo(agents_with_providers, messages, mongo_db, request.session_id, start_time, request.message, team_sandbox_container_id=_team_sandbox_cid_mongo)
             )
         else:
             raise HTTPException(status_code=400, detail=f"Unknown team mode: {mode}")
@@ -3934,7 +4028,7 @@ async def _chat_mongo(request: ChatRequest, current_user: TokenData, start_time:
         }
 
 
-async def _stream_response_mongo(llm, messages, system_prompt, mongo_db, session_id, agent_id, provider_record, start_time, tools=None, kb_meta=None, agent=None, edit_target=None, past_messages=None):
+async def _stream_response_mongo(llm, messages, system_prompt, mongo_db, session_id, agent_id, provider_record, start_time, tools=None, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None):
     full_content = ""
     reasoning_parts = []
     token_usage = {}
@@ -4246,7 +4340,7 @@ async def _stream_response_mongo(llm, messages, system_prompt, mongo_db, session
                 yield {"event": "tool_call", "data": json.dumps({"id": tc.id, "name": tc.name, "arguments": tc.arguments, "status": "running"})}
 
                 _tool_start = time.time()
-                _sandbox_cid = (agent or {}).get("sandbox_container_id") if agent else None
+                _sandbox_cid = sandbox_container_id_override or ((agent or {}).get("sandbox_container_id") if agent else None)
                 if is_builtin_tool(tc.name):
                     result = await execute_builtin_tool(tc.name, tc.arguments)
                 elif is_sandbox_tool(tc.name):
@@ -4347,7 +4441,7 @@ async def _stream_response_mongo(llm, messages, system_prompt, mongo_db, session
         yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
 
-async def _stream_response_with_mcp_mongo(llm, messages, system_prompt, mongo_db, session_id, agent_id, provider_record, start_time, native_tools, mcp_server_configs, kb_meta=None, agent=None, edit_target=None, past_messages=None):
+async def _stream_response_with_mcp_mongo(llm, messages, system_prompt, mongo_db, session_id, agent_id, provider_record, start_time, native_tools, mcp_server_configs, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None):
     """Like _stream_response_mongo but connects to MCP servers for tool discovery and execution."""
     full_content = ""
     reasoning_parts = []
@@ -4663,7 +4757,7 @@ async def _stream_response_with_mcp_mongo(llm, messages, system_prompt, mongo_db
                     yield {"event": "tool_call", "data": json.dumps({"id": tc.id, "name": tc.name, "arguments": tc.arguments, "status": "running"})}
 
                     _tool_start = time.time()
-                    _sandbox_cid_mongo = agent.get("sandbox_container_id") if agent else None
+                    _sandbox_cid_mongo = sandbox_container_id_override or (agent.get("sandbox_container_id") if agent else None)
                     result = await _execute_mcp_or_native_tool_mongo(tc.name, tc.arguments, mcp_connections, mongo_db, sandbox_container_id=_sandbox_cid_mongo)
                     _span_type = "mcp_call" if parse_mcp_tool_name(tc.name) else "tool_call"
                     await _record_tool_span_mcp_mongo(
@@ -4758,7 +4852,7 @@ async def _stream_response_with_mcp_mongo(llm, messages, system_prompt, mongo_db
 # Team chat mode handlers (MongoDB)
 # ---------------------------------------------------------------------------
 
-async def _team_chat_coordinate_mongo(agents_with_providers, messages, mongo_db, session_id, start_time, user_message):
+async def _team_chat_coordinate_mongo(agents_with_providers, messages, mongo_db, session_id, start_time, user_message, team_sandbox_container_id=None):
     """Coordinate mode (MongoDB): router picks the best agent, that agent responds."""
     try:
         router_agent, router_provider = agents_with_providers[0]
@@ -4831,17 +4925,20 @@ async def _team_chat_coordinate_mongo(agents_with_providers, messages, mongo_db,
             "Only call each tool once — do not call the same tool with the same or similar arguments more than once."
         )
         coord_system_prompt_m = _prepend_team_context(sel_agent.get("system_prompt"), _coord_note_m)
+        coord_system_prompt_m += await _build_teammates_memory_injection_mongo(mongo_db, str(sel_agent["_id"]), agents_with_providers, sel_agent.get("user_id"))
 
         if mcp_configs:
             async for event in _stream_response_with_mcp_mongo(
                 sel_llm, messages, coord_system_prompt_m, mongo_db, session_id,
-                str(sel_agent["_id"]), sel_provider, start_time, tools, mcp_configs, agent=sel_agent
+                str(sel_agent["_id"]), sel_provider, start_time, tools, mcp_configs,
+                agent=sel_agent, sandbox_container_id_override=team_sandbox_container_id,
             ):
                 yield event
         else:
             async for event in _stream_response_mongo(
                 sel_llm, messages, coord_system_prompt_m, mongo_db, session_id,
-                str(sel_agent["_id"]), sel_provider, start_time, tools, agent=sel_agent
+                str(sel_agent["_id"]), sel_provider, start_time, tools,
+                agent=sel_agent, sandbox_container_id_override=team_sandbox_container_id,
             ):
                 yield event
 
@@ -4849,7 +4946,7 @@ async def _team_chat_coordinate_mongo(agents_with_providers, messages, mongo_db,
         yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
 
-async def _team_chat_route_mongo(agents_with_providers, messages, mongo_db, session_id, start_time, user_message):
+async def _team_chat_route_mongo(agents_with_providers, messages, mongo_db, session_id, start_time, user_message, team_sandbox_container_id=None):
     """Route mode (MongoDB): all agents respond in parallel, synthesizer merges."""
     try:
         yield {
@@ -4860,7 +4957,7 @@ async def _team_chat_route_mongo(agents_with_providers, messages, mongo_db, sess
         _route_team_names_m = [ag.get("name", "Agent") for ag, _ in agents_with_providers]
         _route_n_m = len(_route_team_names_m)
 
-        async def get_agent_response(agent, provider):
+        async def get_agent_response_once(agent, provider):
             llm = _create_llm_for_mongo_provider(provider, agent.get("model_id") or provider.get("model_id") or "gpt-4o")
             tools = await _build_tools_for_llm_mongo(agent, mongo_db)
             mcp_configs = await _load_mcp_server_configs_mongo(agent, mongo_db)
@@ -4870,21 +4967,40 @@ async def _team_chat_route_mongo(agents_with_providers, messages, mongo_db, sess
                 "Your response will be combined with the other specialists' responses to form the final answer."
             )
             effective_system_prompt_m = _prepend_team_context(agent.get("system_prompt"), route_note_m)
+            effective_system_prompt_m += await _build_teammates_memory_injection_mongo(mongo_db, str(agent["_id"]), agents_with_providers, agent.get("user_id"))
             if mcp_configs:
+                # NOTE: _chat_with_tools_and_mcp_mongo doesn't support sandbox tools at all
+                # (pre-existing limitation, not specific to teams).
                 content = await _chat_with_tools_and_mcp_mongo(llm, messages, effective_system_prompt_m, tools, mongo_db, mcp_configs)
             else:
-                content = await _chat_with_tools_mongo(llm, messages, effective_system_prompt_m, tools, mongo_db, sandbox_container_id=agent.get("sandbox_container_id"))
-            return agent, provider, content
+                _sandbox_cid = team_sandbox_container_id or agent.get("sandbox_container_id")
+                content = await _chat_with_tools_mongo(llm, messages, effective_system_prompt_m, tools, mongo_db, sandbox_container_id=_sandbox_cid, team_context=(agents_with_providers, str(agent["_id"]), 0))
+            return content
+
+        async def get_agent_response(agent, provider):
+            # One retry on failure — see the SQLite _team_chat_route's identical comment.
+            try:
+                content = await get_agent_response_once(agent, provider)
+                return agent, provider, content, None
+            except Exception:
+                try:
+                    content = await get_agent_response_once(agent, provider)
+                    return agent, provider, content, None
+                except Exception as e2:
+                    return agent, provider, None, str(e2)
 
         tasks = [get_agent_response(ag, pr) for ag, pr in agents_with_providers]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks)
 
         agent_responses = []
-        for result in results:
-            if isinstance(result, Exception):
-                continue
-            ag, pr, content = result
+        for ag, pr, content, error in results:
             name = ag.get("name", "Agent")
+            if error is not None:
+                yield {
+                    "event": "agent_step",
+                    "data": json.dumps({"agent_id": str(ag["_id"]), "agent_name": name, "step": "failed", "error": error}),
+                }
+                continue
             agent_responses.append({
                 "agent_name": name,
                 "agent_id": str(ag["_id"]),
@@ -4971,7 +5087,7 @@ async def _team_chat_route_mongo(agents_with_providers, messages, mongo_db, sess
         yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
 
-async def _team_chat_collaborate_mongo(agents_with_providers, messages, mongo_db, session_id, start_time, user_message):
+async def _team_chat_collaborate_mongo(agents_with_providers, messages, mongo_db, session_id, start_time, user_message, team_sandbox_container_id=None):
     """Collaborate mode (MongoDB): agents run sequentially, each building on previous outputs."""
     try:
         accumulated_context = []
@@ -4995,6 +5111,7 @@ async def _team_chat_collaborate_mongo(agents_with_providers, messages, mongo_db
             effective_system_prompt = _build_collaborate_system_prompt(
                 ag.get("system_prompt"), name, i, total, all_names[:i]
             )
+            effective_system_prompt += await _build_teammates_memory_injection_mongo(mongo_db, str(ag["_id"]), agents_with_providers, ag.get("user_id"))
 
             agent_messages = list(messages)
             if accumulated_context:
@@ -5010,12 +5127,14 @@ async def _team_chat_collaborate_mongo(agents_with_providers, messages, mongo_db
                 if mcp_configs:
                     stream = _stream_response_with_mcp_mongo(
                         llm, agent_messages, effective_system_prompt, mongo_db, session_id,
-                        str(ag["_id"]), pr, start_time, tools, mcp_configs, agent=ag
+                        str(ag["_id"]), pr, start_time, tools, mcp_configs,
+                        agent=ag, sandbox_container_id_override=team_sandbox_container_id,
                     )
                 else:
                     stream = _stream_response_mongo(
                         llm, agent_messages, effective_system_prompt, mongo_db, session_id,
-                        str(ag["_id"]), pr, start_time, tools, agent=ag
+                        str(ag["_id"]), pr, start_time, tools,
+                        agent=ag, sandbox_container_id_override=team_sandbox_container_id,
                     )
                 async for event in stream:
                     if event.get("event") == "message_complete" and contributing_agents:
@@ -5035,9 +5154,12 @@ async def _team_chat_collaborate_mongo(agents_with_providers, messages, mongo_db
                         yield event
             else:
                 if mcp_configs:
+                    # NOTE: _chat_with_tools_and_mcp_mongo doesn't support sandbox tools at all
+                    # (pre-existing limitation, not specific to teams).
                     content = await _chat_with_tools_and_mcp_mongo(llm, agent_messages, effective_system_prompt, tools, mongo_db, mcp_configs)
                 else:
-                    content = await _chat_with_tools_mongo(llm, agent_messages, effective_system_prompt, tools, mongo_db, sandbox_container_id=ag.get("sandbox_container_id"))
+                    _sandbox_cid = team_sandbox_container_id or ag.get("sandbox_container_id")
+                    content = await _chat_with_tools_mongo(llm, agent_messages, effective_system_prompt, tools, mongo_db, sandbox_container_id=_sandbox_cid, team_context=(agents_with_providers, str(ag["_id"]), 0))
                 accumulated_context.append({"agent_name": name, "response": content})
                 contributing_agents.append({"id": str(ag["_id"]), "name": name})
                 yield {

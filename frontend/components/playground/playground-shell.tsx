@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"
 import { useSearchParams } from "next/navigation"
 import { Sidebar } from "./sidebar/sidebar"
 import { ModelSelector } from "./model-selector"
+import { TeamMembersPopover } from "./team-members-popover"
 import { ArtifactPanel } from "./artifact-panel"
 import { usePlaygroundStore } from "@/stores/playground-store"
 import { PanelLeftClose, PanelLeft, SquarePen, PanelRight, Terminal } from "lucide-react"
@@ -145,16 +146,16 @@ function TopBar() {
   const artifactPanelOpen = usePlaygroundStore((s) => s.artifactPanelOpen)
   const setArtifactPanelOpen = usePlaygroundStore((s) => s.setArtifactPanelOpen)
 
-  const selectedEntity =
-    mode === "agent"
-      ? agents.find((a) => a.id === selectedAgentId)
-      : teams.find((t) => t.id === selectedTeamId)
+  const selectedAgentEntity = mode === "agent" ? agents.find((a) => a.id === selectedAgentId) : undefined
+  const selectedTeamEntity = mode === "team" ? teams.find((t) => t.id === selectedTeamId) : undefined
+  const selectedEntity = selectedAgentEntity ?? selectedTeamEntity
 
   return (
     <div className="flex items-center gap-3 flex-1">
       {selectedEntity ? (
         <>
           <span className="text-sm font-medium">{selectedEntity.name}</span>
+          {selectedTeamEntity && <TeamMembersPopover team={selectedTeamEntity} />}
           {selectedEntity.sandbox_enabled && (
             <span className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-medium ${
               selectedEntity.sandbox_container_id
