@@ -85,3 +85,9 @@ class BaseLLMProvider(ABC):
     async def test_connection(self) -> bool:
         """Test if the provider is reachable and credentials are valid."""
         ...
+
+    async def get_context_length(self) -> int | None:
+        """Best-effort live context-length lookup, if this provider's server
+        exposes one (e.g. LM Studio). Returns None when unsupported/unknown —
+        callers fall back to explicit config or static per-model defaults."""
+        return None

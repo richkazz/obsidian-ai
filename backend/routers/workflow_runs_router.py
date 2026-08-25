@@ -510,6 +510,107 @@ async def get_workflow_run(
     return _run_to_response(run)
 
 
+@router.post("/workflow-runs/{run_id}/approvals/{approval_id}/approve")
+async def approve_workflow_node(
+    run_id: str,
+    approval_id: str,
+    current_user: TokenData = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Resolve a paused 'approval' node — signals the in-memory event the DAG
+    executor is waiting on (see dag_executor.workflow_hitl_events). If the
+    executor process has restarted since the run paused, the event key won't
+    exist and this just resolves the DB record with no live run to wake —
+    same trade-off the existing chat HITL system already accepts."""
+    from dag_executor import workflow_hitl_events
+
+    if DATABASE_TYPE == "mongo":
+        mongo_db = get_database()
+        run = await WorkflowRunCollection.find_by_id(mongo_db, run_id)
+        if not run or run.get("user_id") != current_user.user_id:
+            raise HTTPException(status_code=404, detail="Workflow run not found")
+        from models_mongo import WorkflowApprovalCollection
+        approval = await WorkflowApprovalCollection.find_by_id(mongo_db, approval_id)
+        if not approval or approval.get("workflow_run_id") != run_id or approval.get("status") != "pending":
+            raise HTTPException(status_code=404, detail="Approval not found or already resolved")
+        await WorkflowApprovalCollection.update_status(mongo_db, approval_id, "approved")
+        event = workflow_hitl_events.get(f"{run_id}:{approval['node_id']}")
+        if event:
+            event.set()
+        return {"status": "approved"}
+
+    run = db.query(WorkflowRun).filter(
+        WorkflowRun.id == int(run_id), WorkflowRun.user_id == int(current_user.user_id),
+    ).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    from models import WorkflowApproval
+    approval = db.query(WorkflowApproval).filter(
+        WorkflowApproval.id == int(approval_id),
+        WorkflowApproval.workflow_run_id == run.id,
+        WorkflowApproval.status == "pending",
+    ).first()
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval not found or already resolved")
+    approval.status = "approved"
+    approval.resolved_at = datetime.now(timezone.utc)
+    db.commit()
+    event = workflow_hitl_events.get(f"{run_id}:{approval.node_id}")
+    if event:
+        event.set()
+    return {"status": "approved"}
+
+
+@router.post("/workflow-runs/{run_id}/approvals/{approval_id}/deny")
+async def deny_workflow_node(
+    run_id: str,
+    approval_id: str,
+    current_user: TokenData = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Deny a paused approval node. Signals the same event approve does — the
+    executor checks the resolved status (via ctx.get_approval_status) after
+    waking, rather than assuming approval, so a deny fails the node right away
+    instead of waiting out the full timeout."""
+    from dag_executor import workflow_hitl_events
+
+    if DATABASE_TYPE == "mongo":
+        mongo_db = get_database()
+        run = await WorkflowRunCollection.find_by_id(mongo_db, run_id)
+        if not run or run.get("user_id") != current_user.user_id:
+            raise HTTPException(status_code=404, detail="Workflow run not found")
+        from models_mongo import WorkflowApprovalCollection
+        approval = await WorkflowApprovalCollection.find_by_id(mongo_db, approval_id)
+        if not approval or approval.get("workflow_run_id") != run_id or approval.get("status") != "pending":
+            raise HTTPException(status_code=404, detail="Approval not found or already resolved")
+        await WorkflowApprovalCollection.update_status(mongo_db, approval_id, "denied")
+        event = workflow_hitl_events.get(f"{run_id}:{approval['node_id']}")
+        if event:
+            event.set()
+        return {"status": "denied"}
+
+    run = db.query(WorkflowRun).filter(
+        WorkflowRun.id == int(run_id), WorkflowRun.user_id == int(current_user.user_id),
+    ).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Workflow run not found")
+    from models import WorkflowApproval
+    approval = db.query(WorkflowApproval).filter(
+        WorkflowApproval.id == int(approval_id),
+        WorkflowApproval.workflow_run_id == run.id,
+        WorkflowApproval.status == "pending",
+    ).first()
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval not found or already resolved")
+    approval.status = "denied"
+    approval.resolved_at = datetime.now(timezone.utc)
+    db.commit()
+    event = workflow_hitl_events.get(f"{run_id}:{approval.node_id}")
+    if event:
+        event.set()
+    return {"status": "denied"}
+
+
 # ---------------------------------------------------------------------------
 # SQLite execution
 # ---------------------------------------------------------------------------
@@ -862,337 +963,143 @@ async def _evaluate_condition(upstream_outputs: dict, user_input: str, branches:
     return branches[0]
 
 
+async def _evaluate_condition_mongo(upstream_outputs: dict, user_input: str, branches: list, condition_prompt: str, mongo_db) -> str:
+    """Mongo counterpart of _evaluate_condition."""
+    if not branches:
+        return ""
+
+    provider = await mongo_db["llm_providers"].find_one({"api_key": {"$exists": True, "$ne": None}})
+    if not provider:
+        provider = await mongo_db["llm_providers"].find_one({})
+    if not provider:
+        return branches[0]
+
+    branch_list = ", ".join(f'"{b}"' for b in branches)
+    context = "\n\n".join(upstream_outputs.values()) if upstream_outputs else user_input
+    if not condition_prompt:
+        condition_prompt = f"Based on the content, choose the most appropriate branch from: {branch_list}. Reply with only the branch name."
+
+    system = (
+        f"You are a routing classifier. Your job is to read content and select exactly one branch label from the list: [{branch_list}].\n"
+        f"Respond with ONLY the branch label — no explanation, no punctuation, just the label."
+    )
+    user_msg = f"{condition_prompt}\n\nContent:\n{context[:4000]}"
+
+    llm = _create_llm_mongo(provider)
+    messages = [LLMMessage(role="user", content=user_msg)]
+    result = ""
+    async for chunk in llm.chat_stream(messages, system_prompt=system):
+        if chunk.type == "content":
+            result += chunk.content
+        elif chunk.type == "error":
+            raise Exception(f"Condition LLM error: {chunk.error}")
+        elif chunk.type == "done":
+            break
+    chosen = result.strip().strip('"\'').lower()
+    for b in branches:
+        if b.lower() == chosen:
+            return b
+    for b in branches:
+        if chosen in b.lower() or b.lower() in chosen:
+            return b
+
+    logger.warning(f"Condition LLM returned '{chosen}' which doesn't match any branch {branches}. Defaulting to first branch.")
+    return branches[0]
+
+
 # ---------------------------------------------------------------------------
 # DAG execution — SQLite
 # ---------------------------------------------------------------------------
 
 async def _execute_dag_sqlite(run, workflow, steps, user_input, db):
-    """SSE generator — executes a DAG workflow with parallel node firing."""
-    import asyncio
+    """SSE generator — executes a DAG workflow via the shared dag_executor core."""
+    from dag_executor import DagContext, execute_dag
     run_id = run.id
 
-    # Index steps by their node ID
-    node_map = {s["id"]: s for s in steps}
-    all_node_ids = set(node_map.keys())
+    async def _get_agent(agent_id: str):
+        return db.query(Agent).filter(Agent.id == int(agent_id)).first()
 
-    # Shared state — accessed from concurrent tasks via asyncio (single-threaded event loop)
-    outputs: dict[str, str] = {}          # node_id → output text
-    condition_outputs: dict[str, str] = {}  # condition node_id → chosen branch label
-    skipped: set[str] = set()             # nodes on non-taken branches
-    node_status: dict[str, str] = {nid: "pending" for nid in all_node_ids}
-    in_flight: set[str] = set()
-    failed: set[str] = set()
-    sse_queue: asyncio.Queue = asyncio.Queue()
+    async def _get_provider(agent):
+        if not agent.provider_id:
+            return None
+        return db.query(LLMProvider).filter(LLMProvider.id == agent.provider_id).first()
 
-    # Resolve agent names upfront for the initial step_results snapshot
-    step_results_by_id: dict[str, dict] = {}
-    for i, s in enumerate(steps):
-        node_type = s.get("node_type", "agent")
-        if node_type == "agent" and s.get("agent_id"):
-            agent = db.query(Agent).filter(Agent.id == int(s["agent_id"])).first()
-            agent_name = agent.name if agent else "Unknown"
-        else:
-            agent_name = node_type.capitalize()  # "Start", "End"
-        step_results_by_id[s["id"]] = {
-            "node_id": s["id"],
-            "order": i + 1,
-            "node_type": node_type,
-            "agent_id": s.get("agent_id"),
-            "agent_name": agent_name,
-            "task": s["task"],
-            "status": "pending",
-        }
+    async def _build_tools_a(agent):
+        return _build_tools(agent, db)
 
-    def _snapshot():
-        return json.dumps(list(step_results_by_id.values()))
+    async def _load_mcp_a(agent):
+        return _load_mcp_configs(agent, db)
 
-    def _update(updates):
+    async def _execute_native_tool(name, args):
+        return _execute_tool(name, args, db)
+
+    async def _evaluate_condition_a(upstream, uinput, branches, prompt):
+        return await _evaluate_condition(upstream, uinput, branches, prompt, db)
+
+    async def _update(updates):
         _update_run(db, run_id, updates)
 
-    yield {
-        "event": "workflow_start",
-        "data": json.dumps({
-            "run_id": str(run_id),
-            "workflow_name": workflow.name,
-            "total_steps": len(steps),
-        }),
-    }
+    async def _create_approval(node_id: str, prompt_text: str) -> str:
+        from models import WorkflowApproval
+        approval = WorkflowApproval(workflow_run_id=run_id, node_id=node_id, prompt=prompt_text)
+        db.add(approval)
+        db.commit()
+        db.refresh(approval)
+        return str(approval.id)
 
-    async def run_node(node_id: str):
-        s = node_map[node_id]
-        node_type = s.get("node_type", "agent")
-        task = s["task"]
+    async def _resolve_approval(approval_id: str, status: str):
+        from models import WorkflowApproval
+        approval = db.query(WorkflowApproval).filter(WorkflowApproval.id == int(approval_id)).first()
+        if approval:
+            approval.status = status
+            approval.resolved_at = datetime.now(timezone.utc)
+            db.commit()
 
-        # --- Start node: pass through user_input (or configured default) ---
-        if node_type == "start":
-            default_input = (s.get("config") or {}).get("default_input", "") or task
-            start_out = default_input if default_input else user_input
-            outputs[node_id] = start_out
-            step_results_by_id[node_id]["status"] = "completed"
-            step_results_by_id[node_id]["output"] = start_out
-            step_results_by_id[node_id]["started_at"] = datetime.now(timezone.utc).isoformat()
-            step_results_by_id[node_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-            await sse_queue.put({"event": "node_complete", "node_id": node_id,
-                                 "agent_name": "Start", "output": start_out})
-            return True
+    async def _get_approval_status(approval_id: str) -> str:
+        from models import WorkflowApproval
+        approval = db.query(WorkflowApproval).filter(WorkflowApproval.id == int(approval_id)).first()
+        return approval.status if approval else "denied"
 
-        # --- End node: aggregate upstream outputs ---
-        if node_type == "end":
-            upstream = {dep: outputs[dep] for dep in (s.get("depends_on") or []) if dep in outputs}
-            end_out = "\n\n".join(upstream.values()) if upstream else ""
-            outputs[node_id] = end_out
-            step_results_by_id[node_id]["status"] = "completed"
-            step_results_by_id[node_id]["output"] = end_out
-            step_results_by_id[node_id]["started_at"] = datetime.now(timezone.utc).isoformat()
-            step_results_by_id[node_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-            await sse_queue.put({"event": "node_complete", "node_id": node_id,
-                                 "agent_name": "End", "output": end_out})
-            return True
-
-        # --- Condition/Router node: classify upstream output → pick branch ---
-        if node_type == "condition":
-            upstream = {dep: outputs[dep] for dep in (s.get("depends_on") or []) if dep in outputs}
-            cfg = s.get("config") or {}
-            branches = cfg.get("branches") or []
-            condition_prompt = cfg.get("condition_prompt") or s.get("task") or ""
-            chosen = await _evaluate_condition(upstream, user_input, branches, condition_prompt, db)
-            condition_outputs[node_id] = chosen
-            outputs[node_id] = chosen  # so downstream can reference it too
-
-            # Mark nodes on non-taken branches as skipped
-            for other_id, other_s in node_map.items():
-                if other_id in completed or other_id in skipped or other_id in in_flight:
-                    continue
-                dep_branch = other_s.get("input_branch")
-                if dep_branch and node_id in (other_s.get("depends_on") or []):
-                    if dep_branch != chosen:
-                        skipped.add(other_id)
-                        step_results_by_id[other_id]["status"] = "skipped"
-
-            step_results_by_id[node_id]["status"] = "completed"
-            step_results_by_id[node_id]["output"] = chosen
-            step_results_by_id[node_id]["started_at"] = datetime.now(timezone.utc).isoformat()
-            step_results_by_id[node_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-            await sse_queue.put({"event": "node_complete", "node_id": node_id,
-                                 "agent_name": "Condition", "output": chosen})
-            return True
-
-        # --- Agent node: existing logic ---
-        agent_id = int(s["agent_id"])
-
-        agent = db.query(Agent).filter(Agent.id == agent_id).first()
-        if not agent:
-            await sse_queue.put({"event": "node_error", "node_id": node_id, "error": "Agent not found"})
-            return False
-
-        if not agent.provider_id:
-            await sse_queue.put({"event": "node_error", "node_id": node_id, "error": "Agent has no provider"})
-            return False
-
-        provider = db.query(LLMProvider).filter(LLMProvider.id == agent.provider_id).first()
-        if not provider:
-            await sse_queue.put({"event": "node_error", "node_id": node_id, "error": "Provider not found"})
-            return False
-
-        upstream = {dep: outputs[dep] for dep in (s.get("depends_on") or []) if dep in outputs}
-        node_input = _format_dag_input(task, upstream, user_input)
-
-        step_results_by_id[node_id]["status"] = "running"
-        step_results_by_id[node_id]["started_at"] = datetime.now(timezone.utc).isoformat()
-
-        await sse_queue.put({
-            "event": "node_start",
-            "node_id": node_id,
-            "agent_id": str(agent.id),
-            "agent_name": agent.name,
-            "task": task,
-        })
-
-        llm = _create_llm(provider, agent.model_id)
-        tools = _build_tools(agent, db)
-        mcp_configs = _load_mcp_configs(agent, db)
-        messages = [LLMMessage(role="user", content=node_input)]
-
-        try:
-            full_content = ""
-            if mcp_configs:
-                async with AsyncExitStack() as stack:
-                    mcp_connections, all_mcp_tools = await _connect_mcp_servers(stack, mcp_configs)
-                    merged = _merge_tools(tools, all_mcp_tools)
-                    for _round in range(MAX_TOOL_ROUNDS + 1):
-                        tool_calls_collected = []
-                        async for chunk in llm.chat_stream(messages, system_prompt=agent.system_prompt, tools=merged):
-                            if chunk.type == "content":
-                                full_content += chunk.content
-                                await sse_queue.put({"event": "node_content_delta", "node_id": node_id, "content": chunk.content})
-                            elif chunk.type == "tool_call" and chunk.tool_call:
-                                tool_calls_collected.append(chunk.tool_call)
-                            elif chunk.type == "done":
-                                break
-                            elif chunk.type == "error":
-                                raise Exception(chunk.error)
-                        if not tool_calls_collected:
-                            break
-                        messages.append(LLMMessage(role="assistant", content=""))
-                        for tc in tool_calls_collected:
-                            result = await _execute_mcp_or_native(tc.name, tc.arguments, mcp_connections, db)
-                            messages.append(LLMMessage(role="user", content=f"[Tool '{tc.name}' returned: {result}]\n\n{TOOL_RESULT_PROMPT}"))
-                        full_content = ""
-            else:
-                for _round in range(MAX_TOOL_ROUNDS + 1):
-                    tool_calls_collected = []
-                    async for chunk in llm.chat_stream(messages, system_prompt=agent.system_prompt, tools=tools):
-                        if chunk.type == "content":
-                            full_content += chunk.content
-                            await sse_queue.put({"event": "node_content_delta", "node_id": node_id, "content": chunk.content})
-                        elif chunk.type == "tool_call" and chunk.tool_call:
-                            tool_calls_collected.append(chunk.tool_call)
-                        elif chunk.type == "done":
-                            break
-                        elif chunk.type == "error":
-                            raise Exception(chunk.error)
-                    if not tool_calls_collected:
-                        break
-                    messages.append(LLMMessage(role="assistant", content=""))
-                    for tc in tool_calls_collected:
-                        result = _execute_tool(tc.name, tc.arguments, db)
-                        messages.append(LLMMessage(role="user", content=f"[Tool '{tc.name}' returned: {result}]\n\n{TOOL_RESULT_PROMPT}"))
-                    full_content = ""
-
-            outputs[node_id] = full_content
-            step_results_by_id[node_id]["status"] = "completed"
-            step_results_by_id[node_id]["output"] = full_content
-            step_results_by_id[node_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-            await sse_queue.put({"event": "node_complete", "node_id": node_id, "agent_name": agent.name, "output": full_content})
-            return True
-
-        except Exception as e:
-            step_results_by_id[node_id]["status"] = "failed"
-            step_results_by_id[node_id]["error"] = str(e)
-            step_results_by_id[node_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
-            await sse_queue.put({"event": "node_error", "node_id": node_id, "error": str(e)})
-            return False
+    ctx = DagContext(
+        get_agent=_get_agent,
+        get_provider=_get_provider,
+        create_llm=_create_llm,
+        build_tools=_build_tools_a,
+        load_mcp_configs=_load_mcp_a,
+        execute_native_tool=_execute_native_tool,
+        evaluate_condition=_evaluate_condition_a,
+        update_run=_update,
+        create_approval=_create_approval,
+        resolve_approval=_resolve_approval,
+        get_approval_status=_get_approval_status,
+    )
 
     try:
-        # Topological execution loop
-        tasks: dict[str, asyncio.Task] = {}
-        completed: set[str] = set()
-
-        def _node_ready(nid: str) -> bool:
-            """True when all dependencies are satisfied (respecting condition branches)."""
-            s = node_map[nid]
-            for dep in (s.get("depends_on") or []):
-                if dep not in completed:
-                    return False
-                # If this node declares input_branch, check the condition chose that branch
-                input_branch = s.get("input_branch")
-                if input_branch and dep in condition_outputs:
-                    if condition_outputs[dep] != input_branch:
-                        return False
-            return True
-
-        while True:
-            # Find nodes ready to fire: all deps satisfied, not started, not failed, not skipped
-            ready = [
-                nid for nid in all_node_ids
-                if nid not in completed and nid not in in_flight and nid not in failed
-                and nid not in skipped
-                and _node_ready(nid)
-            ]
-
-            for nid in ready:
-                in_flight.add(nid)
-                node_status[nid] = "running"
-                tasks[nid] = asyncio.create_task(run_node(nid))
-
-            # Drain SSE queue before waiting for tasks
-            while not sse_queue.empty():
-                event = await sse_queue.get()
-                evt_type = event.pop("event")
-                if evt_type == "node_start":
-                    _update({"running_nodes_json": json.dumps(list(in_flight)), "steps_json": _snapshot()})
-                    yield {"event": "node_start", "data": json.dumps({k: v for k, v in event.items()})}
-                elif evt_type == "node_content_delta":
-                    yield {"event": "node_content_delta", "data": json.dumps(event)}
-                elif evt_type == "node_complete":
-                    nid = event["node_id"]
-                    completed.add(nid)
-                    in_flight.discard(nid)
-                    node_status[nid] = "completed"
-                    _update({"running_nodes_json": json.dumps(list(in_flight)), "steps_json": _snapshot()})
-                    yield {"event": "node_complete", "data": json.dumps(event)}
-                elif evt_type == "node_error":
-                    nid = event["node_id"]
-                    failed.add(nid)
-                    in_flight.discard(nid)
-                    node_status[nid] = "failed"
-                    _update({"running_nodes_json": json.dumps(list(in_flight)), "steps_json": _snapshot(), "status": "failed", "error": event.get("error", "")})
-                    yield {"event": "node_error", "data": json.dumps(event)}
-
-            # Check termination
-            if not tasks:
-                break  # nothing running or ready
-            if completed | failed | skipped == all_node_ids:
-                break
-
-            # Wait for at least one task to finish
-            if tasks:
-                pending_tasks = {t for t in tasks.values() if not t.done()}
-                if pending_tasks:
-                    done_set, _ = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
-                    # Drain queue again after tasks finish
-                    while not sse_queue.empty():
-                        event = await sse_queue.get()
-                        evt_type = event.pop("event")
-                        if evt_type == "node_start":
-                            _update({"running_nodes_json": json.dumps(list(in_flight)), "steps_json": _snapshot()})
-                            yield {"event": "node_start", "data": json.dumps(event)}
-                        elif evt_type == "node_content_delta":
-                            yield {"event": "node_content_delta", "data": json.dumps(event)}
-                        elif evt_type == "node_complete":
-                            nid = event["node_id"]
-                            completed.add(nid)
-                            in_flight.discard(nid)
-                            node_status[nid] = "completed"
-                            _update({"running_nodes_json": json.dumps(list(in_flight)), "steps_json": _snapshot()})
-                            yield {"event": "node_complete", "data": json.dumps(event)}
-                        elif evt_type == "node_error":
-                            nid = event["node_id"]
-                            failed.add(nid)
-                            in_flight.discard(nid)
-                            node_status[nid] = "failed"
-                            _update({"running_nodes_json": json.dumps(list(in_flight)), "steps_json": _snapshot(), "status": "failed", "error": event.get("error", "")})
-                            yield {"event": "node_error", "data": json.dumps(event)}
+        async for ev in execute_dag(steps, workflow.name, user_input, ctx, run_id=str(run_id)):
+            evt_type = ev["event"]
+            if evt_type == "workflow_start":
+                yield {"event": "workflow_start", "data": json.dumps({
+                    "run_id": str(run_id), "workflow_name": ev["workflow_name"], "total_steps": ev["total_steps"],
+                })}
+            elif evt_type in ("node_start", "node_content_delta", "node_retry", "node_paused", "node_complete", "node_error"):
+                yield {"event": evt_type, "data": json.dumps({k: v for k, v in ev.items() if k != "event"})}
+            elif evt_type == "workflow_done":
+                if ev["status"] == "failed":
+                    _update_run(db, run_id, {"status": "failed", "completed_at": datetime.now(timezone.utc), "steps_json": json.dumps(ev["step_results"])})
+                    yield {"event": "workflow_error", "data": json.dumps({"run_id": str(run_id), "error": "One or more nodes failed"})}
                 else:
-                    break  # all tasks done
-
-            # Deadlock guard: if nothing is in-flight and nothing is ready, stop
-            new_ready = [
-                nid for nid in all_node_ids
-                if nid not in completed and nid not in in_flight and nid not in failed
-                and nid not in skipped
-                and _node_ready(nid)
-            ]
-            if not in_flight and not new_ready:
-                break
-
-        if failed:
-            _update({"status": "failed", "completed_at": datetime.now(timezone.utc), "steps_json": _snapshot()})
-            yield {"event": "workflow_error", "data": json.dumps({"run_id": str(run_id), "error": "One or more nodes failed"})}
-        else:
-            # Final output = merge of all sink node outputs (nodes with no downstream dependents, not skipped)
-            downstream_deps = set()
-            for s in steps:
-                for dep in (s.get("depends_on") or []):
-                    downstream_deps.add(dep)
-            sink_ids = [nid for nid in all_node_ids if nid not in downstream_deps and nid not in skipped]
-            final_output = "\n\n".join(outputs.get(nid, "") for nid in sink_ids if outputs.get(nid))
-
-            _update({"status": "completed", "final_output": final_output, "completed_at": datetime.now(timezone.utc), "steps_json": _snapshot(), "running_nodes_json": "[]"})
-            yield {"event": "workflow_complete", "data": json.dumps({"run_id": str(run_id), "final_output": final_output})}
-
+                    all_node_ids = {s["id"] for s in steps}
+                    downstream_deps = {dep for s in steps for dep in (s.get("depends_on") or [])}
+                    skipped_ids = {r["node_id"] for r in ev["step_results"] if r.get("status") == "skipped"}
+                    sink_ids = [nid for nid in all_node_ids if nid not in downstream_deps and nid not in skipped_ids]
+                    final_output = "\n\n".join(ev["outputs"].get(nid, "") for nid in sink_ids if ev["outputs"].get(nid))
+                    _update_run(db, run_id, {
+                        "status": "completed", "final_output": final_output,
+                        "completed_at": datetime.now(timezone.utc),
+                        "steps_json": json.dumps(ev["step_results"]), "running_nodes_json": "[]",
+                    })
+                    yield {"event": "workflow_complete", "data": json.dumps({"run_id": str(run_id), "final_output": final_output})}
         yield {"event": "done", "data": "{}"}
-
     except Exception as e:
         _update_run(db, run_id, {"status": "failed", "error": str(e), "completed_at": datetime.now(timezone.utc)})
         yield {"event": "workflow_error", "data": json.dumps({"run_id": str(run_id), "error": str(e)})}
@@ -1253,9 +1160,103 @@ async def _run_workflow_mongo(workflow_id, data, current_user):
         "input_text": data.input,
     })
 
+    from dag_executor import is_dag_workflow
+    if is_dag_workflow(sorted_steps):
+        return EventSourceResponse(
+            _execute_dag_mongo(run, workflow, sorted_steps, data.input, mongo_db)
+        )
     return EventSourceResponse(
         _execute_workflow_mongo(run, workflow, sorted_steps, step_results, data.input, mongo_db)
     )
+
+
+async def _execute_dag_mongo(run, workflow, steps, user_input, mongo_db):
+    """SSE generator — executes a DAG workflow via the shared dag_executor core (Mongo)."""
+    from dag_executor import DagContext, execute_dag
+    run_id = str(run["_id"])
+
+    async def _get_agent(agent_id: str):
+        return await AgentCollection.find_by_id(mongo_db, agent_id)
+
+    async def _get_provider(agent):
+        if not agent.get("provider_id"):
+            return None
+        return await LLMProviderCollection.find_by_id(mongo_db, str(agent["provider_id"]))
+
+    async def _build_tools_a(agent):
+        return await _build_tools_mongo(agent, mongo_db)
+
+    async def _load_mcp_a(agent):
+        return await _load_mcp_configs_mongo(agent, mongo_db)
+
+    async def _execute_native_tool(name, args):
+        return await _execute_tool_mongo(name, args, mongo_db)
+
+    async def _evaluate_condition_a(upstream, uinput, branches, prompt):
+        return await _evaluate_condition_mongo(upstream, uinput, branches, prompt, mongo_db)
+
+    async def _update(updates):
+        await WorkflowRunCollection.update(mongo_db, run_id, updates)
+
+    async def _create_approval(node_id: str, prompt_text: str) -> str:
+        from models_mongo import WorkflowApprovalCollection
+        approval = await WorkflowApprovalCollection.create(mongo_db, {
+            "workflow_run_id": run_id, "node_id": node_id, "prompt": prompt_text,
+        })
+        return str(approval["_id"])
+
+    async def _resolve_approval(approval_id: str, status: str):
+        from models_mongo import WorkflowApprovalCollection
+        await WorkflowApprovalCollection.update_status(mongo_db, approval_id, status)
+
+    async def _get_approval_status(approval_id: str) -> str:
+        from models_mongo import WorkflowApprovalCollection
+        approval = await WorkflowApprovalCollection.find_by_id(mongo_db, approval_id)
+        return approval.get("status", "denied") if approval else "denied"
+
+    ctx = DagContext(
+        get_agent=_get_agent,
+        get_provider=_get_provider,
+        create_llm=_create_llm_mongo,
+        build_tools=_build_tools_a,
+        load_mcp_configs=_load_mcp_a,
+        execute_native_tool=_execute_native_tool,
+        evaluate_condition=_evaluate_condition_a,
+        update_run=_update,
+        create_approval=_create_approval,
+        resolve_approval=_resolve_approval,
+        get_approval_status=_get_approval_status,
+    )
+
+    try:
+        async for ev in execute_dag(steps, workflow.get("name", "Workflow"), user_input, ctx, run_id=run_id):
+            evt_type = ev["event"]
+            if evt_type == "workflow_start":
+                yield {"event": "workflow_start", "data": json.dumps({
+                    "run_id": run_id, "workflow_name": ev["workflow_name"], "total_steps": ev["total_steps"],
+                })}
+            elif evt_type in ("node_start", "node_content_delta", "node_retry", "node_paused", "node_complete", "node_error"):
+                yield {"event": evt_type, "data": json.dumps({k: v for k, v in ev.items() if k != "event"})}
+            elif evt_type == "workflow_done":
+                if ev["status"] == "failed":
+                    await WorkflowRunCollection.update(mongo_db, run_id, {"status": "failed", "completed_at": datetime.now(timezone.utc), "steps_json": json.dumps(ev["step_results"])})
+                    yield {"event": "workflow_error", "data": json.dumps({"run_id": run_id, "error": "One or more nodes failed"})}
+                else:
+                    all_node_ids = {s["id"] for s in steps}
+                    downstream_deps = {dep for s in steps for dep in (s.get("depends_on") or [])}
+                    skipped_ids = {r["node_id"] for r in ev["step_results"] if r.get("status") == "skipped"}
+                    sink_ids = [nid for nid in all_node_ids if nid not in downstream_deps and nid not in skipped_ids]
+                    final_output = "\n\n".join(ev["outputs"].get(nid, "") for nid in sink_ids if ev["outputs"].get(nid))
+                    await WorkflowRunCollection.update(mongo_db, run_id, {
+                        "status": "completed", "final_output": final_output,
+                        "completed_at": datetime.now(timezone.utc),
+                        "steps_json": json.dumps(ev["step_results"]), "running_nodes_json": "[]",
+                    })
+                    yield {"event": "workflow_complete", "data": json.dumps({"run_id": run_id, "final_output": final_output})}
+        yield {"event": "done", "data": "{}"}
+    except Exception as e:
+        await WorkflowRunCollection.update(mongo_db, run_id, {"status": "failed", "error": str(e), "completed_at": datetime.now(timezone.utc)})
+        yield {"event": "workflow_error", "data": json.dumps({"run_id": run_id, "error": str(e)})}
 
 
 async def _execute_workflow_mongo(run, workflow, sorted_steps, step_results, user_input, mongo_db):

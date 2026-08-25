@@ -375,6 +375,22 @@ class AsyncJob(Base):
     resolved_at          = Column(DateTime(timezone=True), nullable=True)
 
 
+class WorkflowApproval(Base):
+    """A pending or resolved human-in-the-loop approval for a DAG workflow's
+    'approval' node — the workflow equivalent of HITLApproval (chat tool-call
+    approvals). Mirrors that pattern: a pending row + an in-memory
+    asyncio.Event the executor waits on (see dag_executor.workflow_hitl_events)."""
+    __tablename__ = "workflow_approvals"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    workflow_run_id     = Column(Integer, ForeignKey("workflow_runs.id"), nullable=False)
+    node_id             = Column(String, nullable=False)
+    prompt              = Column(Text, nullable=True)
+    status              = Column(String, default="pending", nullable=False)  # pending | approved | denied | expired
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+    resolved_at         = Column(DateTime(timezone=True), nullable=True)
+
+
 class AgentVersion(Base):
     """A point-in-time snapshot of an agent's configuration."""
     __tablename__ = "agent_versions"

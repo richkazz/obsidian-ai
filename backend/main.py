@@ -63,6 +63,7 @@ if DATABASE_TYPE == "mongo":
         WhatsAppChannelCollection,
         WAContactSessionCollection,
         AsyncJobCollection,
+        WorkflowApprovalCollection,
     )
 
 
@@ -1000,6 +1001,7 @@ async def lifespan(app: FastAPI):
         await WhatsAppChannelCollection.create_indexes(db)
         await WAContactSessionCollection.create_indexes(db)
         await AsyncJobCollection.create_indexes(db)
+        await WorkflowApprovalCollection.create_indexes(db)
         # Auto-deny any HITL approvals left pending from a previous server run
         await HITLApprovalCollection.deny_all_pending(db)
         # Auto-reject any tool proposals left pending from a previous server run

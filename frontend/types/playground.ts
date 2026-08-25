@@ -269,7 +269,7 @@ export interface CreateSessionRequest {
 // Workflows
 export interface WorkflowStep {
   id?: string                          // stable UUID for DAG nodes; undefined for legacy linear steps
-  node_type?: "start" | "agent" | "end" | "condition" | "approval"
+  node_type?: "start" | "agent" | "end" | "condition" | "approval" | "map"
   agent_id?: string                    // required for agent nodes; undefined for start/end nodes
   task: string
   order: number                        // kept for backward compat

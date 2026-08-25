@@ -2077,15 +2077,31 @@ def _estimate_tokens(messages: list) -> int:
     return total
 
 
-def _get_context_limit(model_id: str) -> int:
+def _get_context_limit(model_id: str, provider_config: dict | None = None) -> int:
+    """Resolve the usable context window for compaction purposes.
+    Checks, in order: an explicit context_length set on the provider's config
+    (the only reliable source for local/custom servers like LM Studio/Ollama,
+    where the user picks the context size at load time and we have no way to
+    query it), then the static name-substring guess table for known hosted
+    models, then a conservative fallback for anything unrecognized — 100k was
+    too generous a default for unknown/local models and let compaction never
+    trigger before the real server-side context was exceeded."""
+    if provider_config:
+        explicit = provider_config.get("context_length")
+        if explicit:
+            try:
+                return int(explicit)
+            except (TypeError, ValueError):
+                pass
+
     model_lower = (model_id or "").lower()
     for key, limit in _MODEL_CONTEXT_LIMITS.items():
         if key in model_lower:
             return limit
-    return 100_000  # conservative fallback
+    return 8_000  # conservative fallback for unrecognized/local models
 
 
-async def _compact_context_if_needed(messages: list, llm, system_prompt: str | None, db, session_id: int) -> dict | None:
+async def _compact_context_if_needed(messages: list, llm, system_prompt: str | None, db, session_id: int, provider_record=None) -> dict | None:
     """Check if context is near the limit and compact if needed.
 
     Summarizes older messages into a single system summary, keeping the most
@@ -2100,7 +2116,25 @@ async def _compact_context_if_needed(messages: list, llm, system_prompt: str | N
 
     estimated = _estimate_tokens(messages)
     model_id = getattr(llm, "model_id", "") or ""
-    limit = _get_context_limit(model_id)
+
+    live_limit = None
+    try:
+        live_limit = await llm.get_context_length()
+    except Exception:
+        pass
+
+    if live_limit:
+        limit = live_limit
+    else:
+        provider_config = None
+        if provider_record is not None:
+            raw = provider_record.get("config_json") if isinstance(provider_record, dict) else getattr(provider_record, "config_json", None)
+            if raw:
+                try:
+                    provider_config = json.loads(raw) if isinstance(raw, str) else raw
+                except (json.JSONDecodeError, TypeError):
+                    provider_config = None
+        limit = _get_context_limit(model_id, provider_config)
 
     if estimated < int(limit * _COMPACTION_THRESHOLD):
         return None
@@ -2241,7 +2275,7 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
     tools = _inject_create_tool_schema(tools, agent)
 
     # Context compaction check before streaming
-    compaction_event = await _compact_context_if_needed(messages, llm, system_prompt, db, session_id)
+    compaction_event = await _compact_context_if_needed(messages, llm, system_prompt, db, session_id, provider_record)
     if compaction_event:
         yield compaction_event
 
@@ -2742,7 +2776,7 @@ async def _stream_response_with_mcp(llm, messages, system_prompt, db, session_id
     token_usage = {}
 
     # Context compaction check before streaming
-    compaction_event = await _compact_context_if_needed(messages, llm, system_prompt, db, session_id)
+    compaction_event = await _compact_context_if_needed(messages, llm, system_prompt, db, session_id, provider_record)
     if compaction_event:
         yield compaction_event
 

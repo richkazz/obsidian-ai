@@ -31,9 +31,13 @@ import {
   type Connection,
   type Node,
   type Edge,
+  type EdgeProps,
   Handle,
   Position,
   MarkerType,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getSmoothStepPath,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { useSession } from "next-auth/react"
@@ -51,6 +55,9 @@ import {
   GitBranch,
   LayoutTemplate,
   ChevronDown,
+  X,
+  UserCheck,
+  ListTree,
 } from "lucide-react"
 import type { Agent, Workflow, WorkflowStep } from "@/types/playground"
 
@@ -58,7 +65,26 @@ import type { Agent, Workflow, WorkflowStep } from "@/types/playground"
 // Node type definitions
 // ---------------------------------------------------------------------------
 
-type NodeType = "start" | "agent" | "end" | "condition"
+type NodeType = "start" | "agent" | "end" | "condition" | "approval" | "map"
+
+interface NodeConfig {
+  // approval node
+  prompt?: string
+  timeout_seconds?: number
+  on_timeout?: "fail" | "auto_approve"
+  // map node
+  input_source?: string
+  agent_id?: string
+  concurrency_limit?: number
+  reduce?: "list" | "concat"
+  // agent node retry/timeout
+  retry_config?: {
+    max_attempts?: number
+    backoff?: "fixed" | "exponential"
+    backoff_seconds?: number
+    max_backoff_seconds?: number
+  }
+}
 
 interface NodeData {
   node_type: NodeType
@@ -66,10 +92,12 @@ interface NodeData {
   agent_name: string
   task: string
   branches?: string[]
+  config?: NodeConfig
   agents: Agent[]
   onUpdate: (id: string, field: string, value: string) => void
   onDelete: (id: string) => void
   onBranchUpdate?: (id: string, branches: string[]) => void
+  onConfigUpdate?: (id: string, config: NodeConfig) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +144,26 @@ const NODE_META = {
     iconColor: "#f59e0b",
     headerText: "text-amber-400",
     glow: "hover:shadow-amber-500/20",
+  },
+  approval: {
+    label: "Approval",
+    Icon: UserCheck,
+    handle: "#ec4899",
+    borderColor: "border-l-pink-500",
+    bg: "bg-pink-500/5",
+    iconColor: "#ec4899",
+    headerText: "text-pink-400",
+    glow: "hover:shadow-pink-500/20",
+  },
+  map: {
+    label: "Map",
+    Icon: ListTree,
+    handle: "#14b8a6",
+    borderColor: "border-l-teal-500",
+    bg: "bg-teal-500/5",
+    iconColor: "#14b8a6",
+    headerText: "text-teal-400",
+    glow: "hover:shadow-teal-500/20",
   },
 } as const
 
@@ -259,6 +307,17 @@ function StartNode({ id, data }: { id: string; data: NodeData }) {
 // ---------------------------------------------------------------------------
 
 function AgentNode({ id, data }: { id: string; data: NodeData }) {
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const retry = data.config?.retry_config ?? {}
+  const timeoutSeconds = data.config?.timeout_seconds
+
+  const updateConfig = (patch: Partial<NodeConfig>) => {
+    data.onConfigUpdate?.(id, { ...data.config, ...patch })
+  }
+  const updateRetry = (patch: Partial<NonNullable<NodeConfig["retry_config"]>>) => {
+    updateConfig({ retry_config: { ...retry, ...patch } })
+  }
+
   return (
     <NodeShell
       id={id}
@@ -285,7 +344,7 @@ function AgentNode({ id, data }: { id: string; data: NodeData }) {
       </Field>
       <Field
         label="Task"
-        hint={`Use {{node_id.output}} to pass upstream results into this task.`}
+        hint={`Use {{ nodes.node_id.output }} — or {{ nodes.node_id.output.field }} for a JSON field — to pass upstream results into this task.`}
       >
         <Input
           value={data.task}
@@ -294,6 +353,66 @@ function AgentNode({ id, data }: { id: string; data: NodeData }) {
           className="h-9 text-sm bg-background/70"
         />
       </Field>
+
+      <button
+        onClick={() => setShowAdvanced((v) => !v)}
+        className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground hover:text-foreground uppercase tracking-wider nodrag"
+      >
+        <ChevronDown className={cn("h-3 w-3 transition-transform", showAdvanced && "rotate-180")} />
+        Retry &amp; Timeout
+      </button>
+
+      {showAdvanced && (
+        <div className="space-y-3 pt-1">
+          <Field label="Max Attempts" hint="1 = no retry on failure.">
+            <Input
+              type="number"
+              min={1}
+              max={10}
+              value={retry.max_attempts ?? 1}
+              onChange={(e) => updateRetry({ max_attempts: Math.max(1, parseInt(e.target.value) || 1) })}
+              className="h-8 text-xs bg-background/70"
+            />
+          </Field>
+          {(retry.max_attempts ?? 1) > 1 && (
+            <>
+              <Field label="Backoff">
+                <Select
+                  value={retry.backoff ?? "fixed"}
+                  onValueChange={(v) => updateRetry({ backoff: v as "fixed" | "exponential" })}
+                >
+                  <SelectTrigger className="h-8 text-xs bg-background/70">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed" className="text-xs">Fixed</SelectItem>
+                    <SelectItem value="exponential" className="text-xs">Exponential</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Backoff Seconds">
+                <Input
+                  type="number"
+                  min={0}
+                  value={retry.backoff_seconds ?? 0}
+                  onChange={(e) => updateRetry({ backoff_seconds: Math.max(0, parseFloat(e.target.value) || 0) })}
+                  className="h-8 text-xs bg-background/70"
+                />
+              </Field>
+            </>
+          )}
+          <Field label="Timeout (seconds)" hint="Blank = no timeout.">
+            <Input
+              type="number"
+              min={0}
+              value={timeoutSeconds ?? ""}
+              onChange={(e) => updateConfig({ timeout_seconds: e.target.value ? parseFloat(e.target.value) : undefined })}
+              placeholder="No limit"
+              className="h-8 text-xs bg-background/70"
+            />
+          </Field>
+        </div>
+      )}
     </NodeShell>
   )
 }
@@ -312,6 +431,133 @@ function EndNode({ id, data }: { id: string; data: NodeData }) {
           placeholder="e.g. success, failure..."
           className="h-9 text-sm bg-background/70"
         />
+      </Field>
+    </NodeShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ApprovalNode — pauses the run until a human approves or denies via the
+// run dialog / approvals API. Timeout is mandatory (an unbounded wait can
+// hang a run forever if nobody ever acts on it).
+// ---------------------------------------------------------------------------
+
+function ApprovalNode({ id, data }: { id: string; data: NodeData }) {
+  const updateConfig = (patch: Partial<NodeConfig>) => {
+    data.onConfigUpdate?.(id, { ...data.config, ...patch })
+  }
+
+  return (
+    <NodeShell id={id} nodeType="approval" onDelete={data.onDelete}>
+      <Field
+        label="Prompt"
+        hint="Shown to the approver. Supports {{ nodes.node_id.output }}."
+      >
+        <Input
+          value={data.config?.prompt ?? ""}
+          onChange={(e) => updateConfig({ prompt: e.target.value })}
+          placeholder="Approve this before continuing?"
+          className="h-9 text-sm bg-background/70"
+        />
+      </Field>
+      <Field label="Timeout (seconds)" hint="Required — the run fails (or auto-approves) if nobody responds in time.">
+        <Input
+          type="number"
+          min={30}
+          value={data.config?.timeout_seconds ?? 600}
+          onChange={(e) => updateConfig({ timeout_seconds: Math.max(30, parseInt(e.target.value) || 600) })}
+          className="h-9 text-sm bg-background/70"
+        />
+      </Field>
+      <Field label="On Timeout">
+        <Select
+          value={data.config?.on_timeout ?? "fail"}
+          onValueChange={(v) => updateConfig({ on_timeout: v as "fail" | "auto_approve" })}
+        >
+          <SelectTrigger className="h-9 text-sm bg-background/70">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="fail" className="text-sm">Fail the node</SelectItem>
+            <SelectItem value="auto_approve" className="text-sm">Auto-approve</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+    </NodeShell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// MapNode — runs one agent once per item in an upstream list output,
+// concurrently (bounded), then reduces the per-item outputs into one value.
+// ---------------------------------------------------------------------------
+
+function MapNode({ id, data }: { id: string; data: NodeData }) {
+  const updateConfig = (patch: Partial<NodeConfig>) => {
+    data.onConfigUpdate?.(id, { ...data.config, ...patch })
+  }
+
+  return (
+    <NodeShell id={id} nodeType="map" onDelete={data.onDelete}>
+      <Field
+        label="Input Source"
+        hint="Upstream node whose output is a JSON list, e.g. research_step.output or research_step.output.items"
+      >
+        <Input
+          value={data.config?.input_source ?? ""}
+          onChange={(e) => updateConfig({ input_source: e.target.value })}
+          placeholder="node_id.output"
+          className="h-9 text-sm bg-background/70 font-mono"
+        />
+      </Field>
+      <Field label="Agent">
+        <Select
+          value={data.config?.agent_id ?? ""}
+          onValueChange={(v) => updateConfig({ agent_id: v })}
+        >
+          <SelectTrigger className="h-9 text-sm bg-background/70">
+            <SelectValue placeholder="Select agent..." />
+          </SelectTrigger>
+          <SelectContent>
+            {data.agents.map((a) => (
+              <SelectItem key={a.id} value={a.id} className="text-sm">
+                {a.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Per-Item Task" hint="Use {{ item }} for the current item.">
+        <Input
+          value={data.task}
+          onChange={(e) => data.onUpdate(id, "task", e.target.value)}
+          placeholder="Summarize {{ item }}..."
+          className="h-9 text-sm bg-background/70"
+        />
+      </Field>
+      <Field label="Concurrency Limit">
+        <Input
+          type="number"
+          min={1}
+          max={20}
+          value={data.config?.concurrency_limit ?? 5}
+          onChange={(e) => updateConfig({ concurrency_limit: Math.max(1, parseInt(e.target.value) || 5) })}
+          className="h-9 text-sm bg-background/70"
+        />
+      </Field>
+      <Field label="Combine Results">
+        <Select
+          value={data.config?.reduce ?? "list"}
+          onValueChange={(v) => updateConfig({ reduce: v as "list" | "concat" })}
+        >
+          <SelectTrigger className="h-9 text-sm bg-background/70">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="list" className="text-sm">JSON list</SelectItem>
+            <SelectItem value="concat" className="text-sm">Concatenated text</SelectItem>
+          </SelectContent>
+        </Select>
       </Field>
     </NodeShell>
   )
@@ -462,6 +708,53 @@ function ConditionNode({ id, data }: { id: string; data: NodeData }) {
 }
 
 // ---------------------------------------------------------------------------
+// DeletableEdge — a hover-revealed × button on every edge, since selecting an
+// edge and pressing Delete isn't discoverable (users previously had to delete
+// the whole node to remove one wrong connection).
+// ---------------------------------------------------------------------------
+
+function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, label, labelStyle, labelBgStyle }: EdgeProps) {
+  const { setEdges } = useReactFlow()
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
+    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+  })
+
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} style={style} markerEnd={markerEnd} />
+      <EdgeLabelRenderer>
+        <div
+          className="nodrag nopan group absolute flex flex-col items-center gap-0.5"
+          style={{
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            pointerEvents: "all",
+          }}
+        >
+          {label ? (
+            <span
+              className="text-[9px] font-mono font-semibold"
+              style={labelStyle as React.CSSProperties}
+            >
+              {label as string}
+            </span>
+          ) : null}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setEdges((eds) => eds.filter((ed) => ed.id !== id))
+            }}
+            className="h-4 w-4 rounded-full bg-background border border-border flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 hover:!opacity-100 hover:text-destructive hover:border-destructive transition-opacity"
+            title="Delete connection"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // nodeTypes — registered outside component to avoid re-registration on re-render
 // ---------------------------------------------------------------------------
 
@@ -470,6 +763,12 @@ const nodeTypes = {
   workflowNode: AgentNode,  // keep "workflowNode" key for backward compat with saved workflows
   endNode: EndNode,
   conditionNode: ConditionNode,
+  approvalNode: ApprovalNode,
+  mapNode: MapNode,
+}
+
+const edgeTypes = {
+  smoothstep: DeletableEdge,
 }
 
 // ---------------------------------------------------------------------------
@@ -567,6 +866,16 @@ function NodePalette({
       cls: "text-amber-400 border-amber-500/40 hover:bg-amber-500/10",
     },
     {
+      type: "approval",
+      label: "Approval",
+      cls: "text-pink-400 border-pink-500/40 hover:bg-pink-500/10",
+    },
+    {
+      type: "map",
+      label: "Map",
+      cls: "text-teal-400 border-teal-500/40 hover:bg-teal-500/10",
+    },
+    {
       type: "end",
       label: "End",
       cls: "text-rose-400 border-rose-500/40 hover:bg-rose-500/10",
@@ -629,14 +938,16 @@ function WorkflowDialogInner({ open, onOpenChange, agents, workflow, onCreated, 
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false)
 
   // Per-node data store — kept in sync with React Flow node state
-  const nodeDataRef = useRef<Record<string, { node_type: NodeType; agent_id: string; task: string; branches?: string[] }>>({})
+  const nodeDataRef = useRef<Record<string, { node_type: NodeType; agent_id: string; task: string; branches?: string[]; config?: NodeConfig }>>({})
 
   const makeNode = useCallback((nodeType: NodeType, x = 100, y = 100): Node => {
     const id = `node-${Date.now()}-${_nodeCounter++}`
-    const initialData: { node_type: NodeType; agent_id: string; task: string; branches?: string[] } = { node_type: nodeType, agent_id: "", task: "" }
+    const initialData: { node_type: NodeType; agent_id: string; task: string; branches?: string[]; config?: NodeConfig } = { node_type: nodeType, agent_id: "", task: "" }
     if (nodeType === "condition") initialData.branches = ["branch_a", "branch_b"]
+    if (nodeType === "approval") initialData.config = { timeout_seconds: 600, on_timeout: "fail" }
+    if (nodeType === "map") initialData.config = { concurrency_limit: 5, reduce: "list" }
     nodeDataRef.current[id] = initialData
-    const rfType = nodeType === "start" ? "startNode" : nodeType === "end" ? "endNode" : nodeType === "condition" ? "conditionNode" : "workflowNode"
+    const rfType = nodeType === "start" ? "startNode" : nodeType === "end" ? "endNode" : nodeType === "condition" ? "conditionNode" : nodeType === "approval" ? "approvalNode" : nodeType === "map" ? "mapNode" : "workflowNode"
     return {
       id,
       type: rfType,
@@ -693,6 +1004,19 @@ function WorkflowDialogInner({ open, onOpenChange, agents, workflow, onCreated, 
       }
       setNodes((nds: Node[]) =>
         nds.map((n: Node) => (n.id === nodeId ? { ...n, data: { ...n.data, branches } } : n))
+      )
+    },
+    [setNodes]
+  )
+
+  const handleConfigUpdate = useCallback(
+    (nodeId: string, config: NodeConfig) => {
+      nodeDataRef.current[nodeId] = {
+        ...(nodeDataRef.current[nodeId] || { node_type: "agent", agent_id: "", task: "" }),
+        config,
+      }
+      setNodes((nds: Node[]) =>
+        nds.map((n: Node) => (n.id === nodeId ? { ...n, data: { ...n.data, config } } : n))
       )
     },
     [setNodes]
@@ -776,14 +1100,32 @@ function WorkflowDialogInner({ open, onOpenChange, agents, workflow, onCreated, 
     const newNodes: Node[] = sortedSteps.map((step) => {
       const id = step.id || `node-${Date.now()}-${_nodeCounter++}`
       const nodeType = (step.node_type as NodeType) || "agent"
-      const rfType = nodeType === "start" ? "startNode" : nodeType === "end" ? "endNode" : nodeType === "condition" ? "conditionNode" : "workflowNode"
-      const data: { node_type: NodeType; agent_id: string; task: string; branches?: string[] } = {
+      const rfType = nodeType === "start" ? "startNode" : nodeType === "end" ? "endNode" : nodeType === "condition" ? "conditionNode" : nodeType === "approval" ? "approvalNode" : nodeType === "map" ? "mapNode" : "workflowNode"
+      const data: { node_type: NodeType; agent_id: string; task: string; branches?: string[]; config?: NodeConfig } = {
         node_type: nodeType,
-        agent_id: step.agent_id || "",
-        task: step.task || "",
+        agent_id: step.agent_id || (nodeType === "map" ? (step.config?.agent_id as string) || "" : ""),
+        task: nodeType === "map" ? (step.config?.task as string) || step.task || "" : step.task || "",
       }
       if (nodeType === "condition" && step.config?.branches) {
         data.branches = step.config.branches as string[]
+      } else if (nodeType === "approval" && step.config) {
+        data.config = {
+          prompt: step.config.prompt as string,
+          timeout_seconds: step.config.timeout_seconds as number,
+          on_timeout: step.config.on_timeout as "fail" | "auto_approve",
+        }
+      } else if (nodeType === "map" && step.config) {
+        data.config = {
+          input_source: step.config.input_source as string,
+          agent_id: step.config.agent_id as string,
+          concurrency_limit: step.config.concurrency_limit as number,
+          reduce: step.config.reduce as "list" | "concat",
+        }
+      } else if (nodeType === "agent" && step.config) {
+        data.config = {
+          retry_config: step.config.retry_config as NodeConfig["retry_config"],
+          timeout_seconds: step.config.timeout_seconds as number,
+        }
       }
       nodeDataRef.current[id] = data
       return { id, type: rfType, position: step.position || { x: 160, y: (step.order - 1) * 260 + 40 }, data: {} }
@@ -854,9 +1196,12 @@ function WorkflowDialogInner({ open, onOpenChange, agents, workflow, onCreated, 
       return true
     })
 
-    const hasAgentNode = validNodes.some((n) => nodeDataRef.current[n.id]?.node_type === "agent")
+    const hasAgentNode = validNodes.some((n) => {
+      const t = nodeDataRef.current[n.id]?.node_type
+      return t === "agent" || t === "map"
+    })
     if (!hasAgentNode) {
-      setError("Add at least one Agent node with an agent and task selected.")
+      setError("Add at least one Agent or Map node with an agent and task selected.")
       return
     }
 
@@ -893,6 +1238,25 @@ function WorkflowDialogInner({ open, onOpenChange, agents, workflow, onCreated, 
         step.config = {
           branches: d.branches ?? ["branch_a", "branch_b"],
           condition_prompt: d.task,
+        }
+      } else if (d.node_type === "approval") {
+        step.config = {
+          prompt: d.config?.prompt ?? d.task,
+          timeout_seconds: d.config?.timeout_seconds ?? 600,
+          on_timeout: d.config?.on_timeout ?? "fail",
+        }
+      } else if (d.node_type === "map") {
+        step.config = {
+          input_source: d.config?.input_source ?? "",
+          agent_id: d.config?.agent_id ?? "",
+          task: d.task,
+          concurrency_limit: d.config?.concurrency_limit ?? 5,
+          reduce: d.config?.reduce ?? "list",
+        }
+      } else if (d.node_type === "agent" && d.config && (d.config.retry_config || d.config.timeout_seconds)) {
+        step.config = {
+          ...(d.config.retry_config ? { retry_config: d.config.retry_config } : {}),
+          ...(d.config.timeout_seconds ? { timeout_seconds: d.config.timeout_seconds } : {}),
         }
       }
       return step
@@ -1063,6 +1427,7 @@ function WorkflowDialogInner({ open, onOpenChange, agents, workflow, onCreated, 
                   onUpdate: handleNodeUpdate,
                   onDelete: handleNodeDelete,
                   onBranchUpdate: handleBranchUpdate,
+                  onConfigUpdate: handleConfigUpdate,
                 },
               }))}
               edges={edges}
@@ -1070,6 +1435,7 @@ function WorkflowDialogInner({ open, onOpenChange, agents, workflow, onCreated, 
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               defaultViewport={{ x: 60, y: 40, zoom: 0.75 }}
               minZoom={0.15}
               maxZoom={2}

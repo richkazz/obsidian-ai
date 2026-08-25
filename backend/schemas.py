@@ -409,7 +409,7 @@ class ChatRequest(BaseModel):
 
 class WorkflowStep(BaseModel):
     id: Optional[str] = None           # stable UUID per node; None for legacy linear steps
-    node_type: Optional[str] = "agent" # "start" | "agent" | "end" | "condition" | "approval"
+    node_type: Optional[str] = "agent" # "start" | "agent" | "end" | "condition" | "approval" | "map"
     agent_id: Optional[str] = None     # required for agent nodes; None for start/end nodes
     task: str
     order: int                         # kept for backward compat with legacy linear workflows
@@ -456,15 +456,16 @@ class WorkflowRunRequest(BaseModel):
 class WorkflowStepResult(BaseModel):
     node_id: Optional[str] = None      # DAG node ID; None for legacy runs
     order: int                         # kept for backward compat
-    node_type: Optional[str] = "agent" # "start" | "agent" | "end"
+    node_type: Optional[str] = "agent" # "start" | "agent" | "end" | "condition" | "approval" | "map" | "map"
     agent_id: Optional[str] = None     # None for non-agent nodes
     agent_name: str
     task: str
-    status: str = "pending"            # pending | running | completed | failed
+    status: str = "pending"            # pending | running | completed | failed | skipped | paused
     output: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
+    attempts: Optional[int] = None     # how many tries this node took (retry_config)
 
 class WorkflowRunResponse(BaseModel):
     id: str

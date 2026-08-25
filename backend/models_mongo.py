@@ -1063,6 +1063,47 @@ class ToolProposalCollection:
         return result.modified_count
 
 
+class WorkflowApprovalCollection:
+    """Collection helper for DAG workflow 'approval' node HITL records in MongoDB.
+    Mirrors HITLApprovalCollection but scoped to workflow_run_id, not session_id."""
+    collection_name = "workflow_approvals"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index("workflow_run_id")
+        await collection.create_index("status")
+
+    @classmethod
+    async def create(cls, db, data: dict) -> dict:
+        collection = db[cls.collection_name]
+        data.setdefault("created_at", datetime.utcnow())
+        data.setdefault("status", "pending")
+        result = await collection.insert_one(data)
+        data["_id"] = result.inserted_id
+        return data
+
+    @classmethod
+    async def find_by_id(cls, db, approval_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"_id": ObjectId(approval_id)})
+
+    @classmethod
+    async def find_pending_by_run(cls, db, workflow_run_id: str) -> list[dict]:
+        collection = db[cls.collection_name]
+        cursor = collection.find({"workflow_run_id": workflow_run_id, "status": "pending"})
+        return await cursor.to_list(length=50)
+
+    @classmethod
+    async def update_status(cls, db, approval_id: str, status: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one_and_update(
+            {"_id": ObjectId(approval_id)},
+            {"$set": {"status": status, "resolved_at": datetime.utcnow()}},
+            return_document=True,
+        )
+
+
 class AsyncJobCollection:
     """
     Collection helper for long-running MCP tool jobs awaiting background re-check

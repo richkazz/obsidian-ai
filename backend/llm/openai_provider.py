@@ -354,3 +354,36 @@ class OpenAIProvider(BaseLLMProvider):
             return len(models) > 0
         except Exception:
             return False
+
+    async def get_context_length(self) -> int | None:
+        """Best-effort live context-length lookup for local OpenAI-compatible
+        servers (LM Studio, etc.) that expose it. Real OpenAI and most other
+        hosted providers don't have this endpoint — any failure just means
+        "unknown", not an error, so callers fall back to their own defaults.
+
+        LM Studio's native /api/v0/models (distinct from the standard OpenAI
+        /v1/models it also serves) reports loaded_context_length — the actual
+        context size the user configured when loading the model, which is the
+        only reliable source of truth for local models (there's no way to
+        derive it from the model name/id alone)."""
+        base = self.base_url.rstrip("/")
+        if base.endswith("/v1"):
+            native_base = base[: -len("/v1")] + "/api/v0"
+        else:
+            native_base = base + "/api/v0"
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                response = await client.get(f"{native_base}/models", headers=self._headers())
+                response.raise_for_status()
+                data = response.json()
+                for m in data.get("data", []):
+                    if m.get("id") == self.model_id:
+                        loaded = m.get("loaded_context_length")
+                        if loaded:
+                            return int(loaded)
+                        max_ctx = m.get("max_context_length")
+                        if max_ctx:
+                            return int(max_ctx)
+        except Exception:
+            pass
+        return None
