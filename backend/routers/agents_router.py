@@ -364,10 +364,25 @@ async def delete_agent(
             raise HTTPException(status_code=404, detail="Agent not found")
         if not is_admin and str(agent.get("user_id")) != str(current_user.user_id):
             raise HTTPException(status_code=403, detail="Not authorized to delete this agent")
-        await mongo_db[AgentCollection.collection_name].update_one(
-            {"_id": agent["_id"]},
-            {"$set": {"is_active": False}},
-        )
+
+        # Guard: a live WhatsApp channel hard-references this agent (agent_id required).
+        # Block rather than silently orphaning the channel.
+        wa_channel = await mongo_db["whatsapp_channels"].find_one({"agent_id": agent_id, "is_active": True})
+        if wa_channel:
+            raise HTTPException(
+                status_code=409,
+                detail="This agent is linked to a WhatsApp channel. Delete or reassign that channel first.",
+            )
+
+        await mongo_db[AgentCollection.collection_name].delete_one({"_id": agent["_id"]})
+        await mongo_db["messages"].delete_many({"agent_id": agent_id})
+        await mongo_db["agent_memories"].delete_many({"agent_id": agent_id})
+        await mongo_db["agent_versions"].delete_many({"agent_id": agent_id})
+        await mongo_db["async_jobs"].delete_many({"agent_id": agent_id})
+        await mongo_db["optimization_runs"].delete_many({"agent_id": agent_id})
+        await mongo_db["eval_suites"].update_many({"agent_id": agent_id}, {"$set": {"agent_id": None}})
+        await mongo_db["eval_suites"].update_many({"judge_agent_id": agent_id}, {"$set": {"judge_agent_id": None}})
+        await mongo_db["eval_runs"].update_many({"agent_id": agent_id}, {"$set": {"agent_id": None}})
         return {"message": "Agent deleted"}
 
     agent = db.query(Agent).filter(Agent.id == int(agent_id)).first()
@@ -376,7 +391,27 @@ async def delete_agent(
     if not is_admin and agent.user_id != int(current_user.user_id):
         raise HTTPException(status_code=403, detail="Not authorized to delete this agent")
 
-    agent.is_active = False
+    from models import WhatsAppChannel
+    wa_channel = db.query(WhatsAppChannel).filter(
+        WhatsAppChannel.agent_id == agent.id,
+        WhatsAppChannel.is_active == True,
+    ).first()
+    if wa_channel:
+        raise HTTPException(
+            status_code=409,
+            detail="This agent is linked to a WhatsApp channel. Delete or reassign that channel first.",
+        )
+
+    from models import Message as _Message, AgentMemory as _AgentMemory, AsyncJob as _AsyncJob, EvalSuite as _EvalSuite, EvalRun as _EvalRun, OptimizationRun as _OptimizationRun
+    db.query(_Message).filter(_Message.agent_id == agent.id).delete(synchronize_session=False)
+    db.query(_AgentMemory).filter(_AgentMemory.agent_id == agent.id).delete(synchronize_session=False)
+    db.query(AgentVersion).filter(AgentVersion.agent_id == agent.id).delete(synchronize_session=False)
+    db.query(_AsyncJob).filter(_AsyncJob.agent_id == agent.id).delete(synchronize_session=False)
+    db.query(_OptimizationRun).filter(_OptimizationRun.agent_id == agent.id).delete(synchronize_session=False)
+    db.query(_EvalSuite).filter(_EvalSuite.agent_id == agent.id).update({"agent_id": None}, synchronize_session=False)
+    db.query(_EvalSuite).filter(_EvalSuite.judge_agent_id == agent.id).update({"judge_agent_id": None}, synchronize_session=False)
+    db.query(_EvalRun).filter(_EvalRun.agent_id == agent.id).update({"agent_id": None}, synchronize_session=False)
+    db.delete(agent)
     db.commit()
     return {"message": "Agent deleted"}
 

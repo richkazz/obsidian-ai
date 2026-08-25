@@ -282,19 +282,19 @@ export default function SkillsPage() {
 
       {/* Preview Dialog */}
       <Dialog open={!!previewSkill} onOpenChange={(o) => { if (!o) setPreviewSkill(null) }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent showFullscreenButton className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{previewSkill?.name}</DialogTitle>
             {previewSkill?.description && (
               <DialogDescription>{previewSkill.description}</DialogDescription>
             )}
           </DialogHeader>
-          <div className="border rounded-lg p-3 bg-muted max-h-96 overflow-y-auto">
+          <div className="border rounded-lg p-3 bg-muted flex-1 min-h-32 overflow-y-auto">
             <pre className="text-sm font-mono whitespace-pre-wrap break-words">
               {previewSkill?.instructions}
             </pre>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => {
               if (previewSkill) { openEditDialog(previewSkill); setPreviewSkill(null) }
             }}>
@@ -308,46 +308,51 @@ export default function SkillsPage() {
 
       {/* Create Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent
+          showFullscreenButton
+          className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0"
+        >
+          <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>New Skill</DialogTitle>
             <DialogDescription>
               Save a reusable skill to your vault. Skills are only applied to agents using a Claude
               model on an Anthropic endpoint.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="create-name">Name</Label>
-              <Input
-                id="create-name"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="e.g., PDF report generation"
-                required
-              />
+          <form onSubmit={handleCreate} className="flex flex-col flex-1 min-h-0">
+            <div className="flex flex-col flex-1 min-h-0 gap-4 px-6 overflow-y-auto">
+              <div className="space-y-2 shrink-0">
+                <Label htmlFor="create-name">Name</Label>
+                <Input
+                  id="create-name"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  placeholder="e.g., PDF report generation"
+                  required
+                />
+              </div>
+              <div className="space-y-2 shrink-0">
+                <Label htmlFor="create-desc">Description (Optional)</Label>
+                <Input
+                  id="create-desc"
+                  value={createDescription}
+                  onChange={(e) => setCreateDescription(e.target.value)}
+                  placeholder="Short summary shown before the skill is loaded"
+                />
+              </div>
+              <div className="flex flex-col flex-1 min-h-0 gap-2 pb-4">
+                <Label htmlFor="create-instructions" className="shrink-0">Instructions</Label>
+                <Textarea
+                  id="create-instructions"
+                  value={createInstructions}
+                  onChange={(e) => setCreateInstructions(e.target.value)}
+                  placeholder="Detailed instructions the model should follow when this skill is relevant..."
+                  className="flex-1 min-h-32 resize-none overflow-y-auto"
+                  required
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="create-desc">Description (Optional)</Label>
-              <Input
-                id="create-desc"
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                placeholder="Short summary shown before the skill is loaded"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="create-instructions">Instructions</Label>
-              <Textarea
-                id="create-instructions"
-                value={createInstructions}
-                onChange={(e) => setCreateInstructions(e.target.value)}
-                placeholder="Detailed instructions the model should follow when this skill is relevant..."
-                rows={10}
-                required
-              />
-            </div>
-            <DialogFooter>
+            <DialogFooter className="px-6 py-4 border-t border-border">
               <Button
                 type="button"
                 variant="outline"
@@ -371,41 +376,46 @@ export default function SkillsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent
+          showFullscreenButton
+          className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0"
+        >
+          <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Edit Skill</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleEdit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Name</Label>
-              <Input
-                id="edit-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Skill name"
-                required
-              />
+          <form onSubmit={handleEdit} className="flex flex-col flex-1 min-h-0">
+            <div className="flex flex-col flex-1 min-h-0 gap-4 px-6 overflow-y-auto">
+              <div className="space-y-2 shrink-0">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Skill name"
+                  required
+                />
+              </div>
+              <div className="space-y-2 shrink-0">
+                <Label htmlFor="edit-desc">Description</Label>
+                <Input
+                  id="edit-desc"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Short summary"
+                />
+              </div>
+              <div className="flex flex-col flex-1 min-h-0 gap-2 pb-4">
+                <Label htmlFor="edit-instructions" className="shrink-0">Instructions</Label>
+                <Textarea
+                  id="edit-instructions"
+                  value={editInstructions}
+                  onChange={(e) => setEditInstructions(e.target.value)}
+                  className="flex-1 min-h-32 resize-none overflow-y-auto"
+                  required
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-desc">Description</Label>
-              <Input
-                id="edit-desc"
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                placeholder="Short summary"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-instructions">Instructions</Label>
-              <Textarea
-                id="edit-instructions"
-                value={editInstructions}
-                onChange={(e) => setEditInstructions(e.target.value)}
-                rows={10}
-                required
-              />
-            </div>
-            <DialogFooter>
+            <DialogFooter className="px-6 py-4 border-t border-border">
               <Button
                 type="button"
                 variant="outline"

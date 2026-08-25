@@ -200,6 +200,10 @@ export const AppRoutes = {
     // Global HITL (all sessions)
     HITLGlobalPending   : () => "/api/chat/hitl/pending",
 
+    // Global async jobs (schedule_async_check background polling, all sessions)
+    AsyncJobsGlobalPending : () => "/api/chat/async-jobs/pending",
+    AsyncJobMarkSeen       : (jobId: string) => `/api/chat/async-jobs/${jobId}/seen`,
+
     // Prompt Vault
     ListPrompts             : () => "/api/prompt-vault",
     CreatePrompt            : () => "/api/prompt-vault",

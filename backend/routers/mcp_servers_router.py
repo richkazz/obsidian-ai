@@ -25,6 +25,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
 
 
+def _unwrap_error(e: BaseException) -> str:
+    """TaskGroup/anyio wraps connection failures in an ExceptionGroup, whose
+    str() is just a useless summary. Walk down to the real leaf exception."""
+    seen = e
+    while isinstance(seen, BaseExceptionGroup) and seen.exceptions:
+        seen = seen.exceptions[0]
+    return f"{type(seen).__name__}: {seen}" if str(seen) else type(seen).__name__
+
+
 def _server_to_response(server, is_mongo=False) -> MCPServerResponse:
     if is_mongo:
         args = server.get("args_json")
@@ -219,7 +228,7 @@ async def delete_mcp_server(
     if not server:
         raise HTTPException(status_code=404, detail="MCP server not found")
 
-    server.is_active = False
+    db.delete(server)
     db.commit()
     return {"message": "MCP server deleted"}
 
@@ -253,8 +262,9 @@ async def test_mcp_config(
                 })
             return {"success": True, "tools": tools, "tools_count": len(tools)}
     except Exception as e:
-        logger.warning(f"MCP config test failed for {data.name}: {e}")
-        return {"success": False, "error": str(e), "tools": [], "tools_count": 0}
+        error = _unwrap_error(e)
+        logger.warning(f"MCP config test failed for {data.name}: {error}")
+        return {"success": False, "error": error, "tools": [], "tools_count": 0}
 
 
 @router.post("/{server_id}/test")
@@ -301,5 +311,6 @@ async def test_mcp_server(
                 })
             return {"success": True, "tools": tools, "tools_count": len(tools)}
     except Exception as e:
-        logger.warning(f"MCP server test failed for {config.get('name')}: {e}")
-        return {"success": False, "error": str(e), "tools": [], "tools_count": 0}
+        error = _unwrap_error(e)
+        logger.warning(f"MCP server test failed for {config.get('name')}: {error}")
+        return {"success": False, "error": error, "tools": [], "tools_count": 0}

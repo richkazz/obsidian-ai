@@ -758,6 +758,25 @@ class HITLPendingListResponse(BaseModel):
 
 
 # ============================================================================
+# Async Job Schemas
+# ============================================================================
+
+class AsyncJobResponse(BaseModel):
+    job_id: str
+    session_id: str
+    description: str
+    status: str  # pending | completed | failed
+    poll_count: int
+    last_result: Optional[str] = None
+    error: Optional[str] = None
+    created_at: Optional[str] = None
+    resolved_at: Optional[str] = None
+
+class AsyncJobPendingListResponse(BaseModel):
+    jobs: list[AsyncJobResponse]
+
+
+# ============================================================================
 # Agent Memory Schemas
 # ============================================================================
 

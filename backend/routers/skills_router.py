@@ -173,6 +173,6 @@ async def delete_skill(
     ).first()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
-    skill.is_active = False
+    db.delete(skill)
     db.commit()
     return {"message": "Skill deleted"}

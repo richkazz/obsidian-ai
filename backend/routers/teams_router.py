@@ -183,6 +183,6 @@ async def delete_team(
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    team.is_active = False
+    db.delete(team)
     db.commit()
     return {"message": "Team deleted"}

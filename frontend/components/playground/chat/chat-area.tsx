@@ -199,25 +199,52 @@ export function ChatArea() {
           setGeneratingTool(null)
           setStreamingArtifact(null)
           // Client-side fallback: extract any <artifact> tags from final message content
-          // in case the SSE artifact event was missed during streaming
+          // in case the SSE artifact event was missed during streaming. Tolerant of
+          // single/unquoted attribute values and an unclosed tag at the very end of the
+          // message (weaker/local models don't always close the tag correctly).
           if (message.content) {
-            const ARTIFACT_RE = /<artifact\s+([^>]*)>([\s\S]*?)<\/artifact>/g
-            const ATTR_RE = /(\w[\w-]*)\s*=\s*"([^"]*)"/g
-            let m: RegExpExecArray | null
-            while ((m = ARTIFACT_RE.exec(message.content)) !== null) {
+            const ATTR_RE = /(\w[\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g
+            const parseAttrs = (attrsStr: string) => {
               const attrs: Record<string, string> = {}
               let a: RegExpExecArray | null
               const attrRe = new RegExp(ATTR_RE.source, "g")
-              while ((a = attrRe.exec(m[1])) !== null) attrs[a[1]] = a[2]
-              if (attrs.id) {
-                upsertArtifact({
-                  id: attrs.id,
-                  title: attrs.title ?? "Artifact",
-                  type: (attrs.type ?? "text") as ArtifactType,
-                  content: m[2].trim(),
-                  sessionId: sessionId!,
-                })
+              while ((a = attrRe.exec(attrsStr)) !== null) {
+                attrs[a[1]] = a[2] ?? a[3] ?? a[4] ?? ""
               }
+              return attrs
+            }
+
+            const CLOSED_RE = /<artifact\s+([^>]*)>([\s\S]*?)<\/artifact\s*>/g
+            const closedIds = new Set<string>()
+            let m: RegExpExecArray | null
+            while ((m = CLOSED_RE.exec(message.content)) !== null) {
+              const attrs = parseAttrs(m[1])
+              if (!attrs.id) continue
+              closedIds.add(attrs.id)
+              upsertArtifact({
+                id: attrs.id,
+                title: attrs.title ?? "Artifact",
+                type: (attrs.type ?? "text") as ArtifactType,
+                content: m[2].trim(),
+                sessionId: sessionId!,
+              })
+            }
+
+            // Unclosed tag — the model never emitted </artifact>. Salvage whatever
+            // content exists after the open tag rather than losing it entirely.
+            const OPEN_RE = /<artifact\s+([^>]*)>/g
+            while ((m = OPEN_RE.exec(message.content)) !== null) {
+              const attrs = parseAttrs(m[1])
+              if (!attrs.id || closedIds.has(attrs.id)) continue
+              const content = message.content.slice(m.index + m[0].length).trim()
+              if (!content) continue
+              upsertArtifact({
+                id: attrs.id,
+                title: attrs.title ?? "Artifact",
+                type: (attrs.type ?? "text") as ArtifactType,
+                content,
+                sessionId: sessionId!,
+              })
             }
           }
         },

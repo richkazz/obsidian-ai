@@ -111,7 +111,7 @@ function VersionDiffModal({
 
   return (
     <Dialog open={!!version} onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0 gap-0">
+      <DialogContent showFullscreenButton className="max-w-2xl max-h-[80vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
           <DialogTitle className="flex items-center gap-2 text-sm font-medium">
             <History className="h-4 w-4 text-blue-500" />
@@ -688,7 +688,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-150 max-h-[85vh] flex flex-col p-0 gap-0">
+      <DialogContent showFullscreenButton className="sm:max-w-150 max-h-[85vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
           <DialogTitle>{isEditing ? "Edit Agent" : "Create Agent"}</DialogTitle>
           <DialogDescription>

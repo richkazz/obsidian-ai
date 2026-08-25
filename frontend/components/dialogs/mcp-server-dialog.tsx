@@ -40,7 +40,7 @@ export function MCPServerDialog({ open, onOpenChange, server, onSaved }: MCPServ
 
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [transportType, setTransportType] = useState<"stdio" | "sse">("stdio")
+  const [transportType, setTransportType] = useState<"stdio" | "sse" | "streamable_http">("stdio")
   // stdio fields
   const [command, setCommand] = useState("")
   const [argsText, setArgsText] = useState("")
@@ -198,7 +198,7 @@ export function MCPServerDialog({ open, onOpenChange, server, onSaved }: MCPServ
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent showFullscreenButton className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit MCP Server" : "Add MCP Server"}</DialogTitle>
           <DialogDescription>
@@ -233,7 +233,7 @@ export function MCPServerDialog({ open, onOpenChange, server, onSaved }: MCPServ
             <Label>Transport</Label>
             <Select
               value={transportType}
-              onValueChange={(v) => setTransportType(v as "stdio" | "sse")}
+              onValueChange={(v) => setTransportType(v as "stdio" | "sse" | "streamable_http")}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -245,10 +245,16 @@ export function MCPServerDialog({ open, onOpenChange, server, onSaved }: MCPServ
                     Stdio (local process)
                   </span>
                 </SelectItem>
+                <SelectItem value="streamable_http">
+                  <span className="flex items-center gap-2">
+                    <Globe className="h-3.5 w-3.5" />
+                    Streamable HTTP (remote)
+                  </span>
+                </SelectItem>
                 <SelectItem value="sse">
                   <span className="flex items-center gap-2">
                     <Globe className="h-3.5 w-3.5" />
-                    SSE (remote HTTP)
+                    SSE (legacy remote)
                   </span>
                 </SelectItem>
               </SelectContent>

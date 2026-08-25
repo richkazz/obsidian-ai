@@ -282,19 +282,19 @@ export default function PromptsPage() {
 
       {/* Preview Dialog */}
       <Dialog open={!!previewPrompt} onOpenChange={(o) => { if (!o) setPreviewPrompt(null) }}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent showFullscreenButton className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{previewPrompt?.name}</DialogTitle>
             {previewPrompt?.description && (
               <DialogDescription>{previewPrompt.description}</DialogDescription>
             )}
           </DialogHeader>
-          <div className="border rounded-lg p-3 bg-muted max-h-96 overflow-y-auto">
+          <div className="border rounded-lg p-3 bg-muted flex-1 min-h-32 overflow-y-auto">
             <pre className="text-sm font-mono whitespace-pre-wrap break-words">
               {previewPrompt?.content}
             </pre>
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => {
               if (previewPrompt) { openEditDialog(previewPrompt); setPreviewPrompt(null) }
             }}>
@@ -308,45 +308,50 @@ export default function PromptsPage() {
 
       {/* Create Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent
+          showFullscreenButton
+          className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0"
+        >
+          <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>New Prompt</DialogTitle>
             <DialogDescription>
               Save a reusable system prompt to your vault.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="create-name">Name</Label>
-              <Input
-                id="create-name"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="e.g., Customer Support Agent"
-                required
-              />
+          <form onSubmit={handleCreate} className="flex flex-col flex-1 min-h-0">
+            <div className="flex flex-col flex-1 min-h-0 gap-4 px-6 overflow-y-auto">
+              <div className="space-y-2 shrink-0">
+                <Label htmlFor="create-name">Name</Label>
+                <Input
+                  id="create-name"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  placeholder="e.g., Customer Support Agent"
+                  required
+                />
+              </div>
+              <div className="space-y-2 shrink-0">
+                <Label htmlFor="create-desc">Description (Optional)</Label>
+                <Input
+                  id="create-desc"
+                  value={createDescription}
+                  onChange={(e) => setCreateDescription(e.target.value)}
+                  placeholder="Brief description of this prompt's purpose"
+                />
+              </div>
+              <div className="flex flex-col flex-1 min-h-0 gap-2 pb-4">
+                <Label htmlFor="create-content" className="shrink-0">Prompt Content</Label>
+                <Textarea
+                  id="create-content"
+                  value={createContent}
+                  onChange={(e) => setCreateContent(e.target.value)}
+                  placeholder="You are a helpful AI assistant..."
+                  className="flex-1 min-h-32 resize-none overflow-y-auto"
+                  required
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="create-desc">Description (Optional)</Label>
-              <Input
-                id="create-desc"
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                placeholder="Brief description of this prompt's purpose"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="create-content">Prompt Content</Label>
-              <Textarea
-                id="create-content"
-                value={createContent}
-                onChange={(e) => setCreateContent(e.target.value)}
-                placeholder="You are a helpful AI assistant..."
-                rows={10}
-                required
-              />
-            </div>
-            <DialogFooter>
+            <DialogFooter className="px-6 py-4 border-t border-border">
               <Button
                 type="button"
                 variant="outline"
@@ -370,41 +375,46 @@ export default function PromptsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent
+          showFullscreenButton
+          className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0"
+        >
+          <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Edit Prompt</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleEdit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Name</Label>
-              <Input
-                id="edit-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Prompt name"
-                required
-              />
+          <form onSubmit={handleEdit} className="flex flex-col flex-1 min-h-0">
+            <div className="flex flex-col flex-1 min-h-0 gap-4 px-6 overflow-y-auto">
+              <div className="space-y-2 shrink-0">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Prompt name"
+                  required
+                />
+              </div>
+              <div className="space-y-2 shrink-0">
+                <Label htmlFor="edit-desc">Description</Label>
+                <Input
+                  id="edit-desc"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Brief description"
+                />
+              </div>
+              <div className="flex flex-col flex-1 min-h-0 gap-2 pb-4">
+                <Label htmlFor="edit-content" className="shrink-0">Prompt Content</Label>
+                <Textarea
+                  id="edit-content"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="flex-1 min-h-32 resize-none overflow-y-auto"
+                  required
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-desc">Description</Label>
-              <Input
-                id="edit-desc"
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                placeholder="Brief description"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-content">Prompt Content</Label>
-              <Textarea
-                id="edit-content"
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                rows={10}
-                required
-              />
-            </div>
-            <DialogFooter>
+            <DialogFooter className="px-6 py-4 border-t border-border">
               <Button
                 type="button"
                 variant="outline"

@@ -244,6 +244,6 @@ async def delete_tool(
     if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
 
-    tool.is_active = False
+    db.delete(tool)
     db.commit()
     return {"message": "Tool deleted"}

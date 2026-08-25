@@ -347,6 +347,34 @@ class ToolProposal(Base):
     resolved_at         = Column(DateTime(timezone=True), nullable=True)
 
 
+class AsyncJob(Base):
+    """
+    A long-running MCP tool job the agent asked to be re-checked on a schedule
+    (e.g. a design generation job started by one tool and finished by another).
+    Polled in the background by APScheduler; on completion a new assistant
+    Message is appended to the session and the job is marked resolved so the
+    pending-jobs notification badge can pick it up.
+    """
+    __tablename__ = "async_jobs"
+
+    id                   = Column(Integer, primary_key=True, index=True)
+    session_id           = Column(Integer, ForeignKey("sessions.id"), nullable=False)
+    agent_id             = Column(Integer, ForeignKey("agents.id"), nullable=True)
+    mcp_server_id        = Column(Integer, ForeignKey("mcp_servers.id"), nullable=False)
+    description          = Column(String, nullable=False)       # human-readable, shown in the badge
+    poll_tool_name       = Column(String, nullable=False)        # unprefixed MCP tool name to re-invoke
+    poll_arguments_json  = Column(Text, nullable=True)           # JSON args for the poll tool call
+    interval_seconds     = Column(Integer, default=30, nullable=False)
+    max_polls            = Column(Integer, default=120, nullable=False)  # safety cap (~1hr at 30s default)
+    poll_count           = Column(Integer, default=0, nullable=False)
+    status               = Column(String, default="pending", nullable=False)  # pending | completed | failed | expired
+    last_result           = Column(Text, nullable=True)
+    error                = Column(Text, nullable=True)
+    seen                 = Column(Boolean, default=False, nullable=False)  # dismissed from the badge
+    created_at           = Column(DateTime(timezone=True), server_default=func.now())
+    resolved_at          = Column(DateTime(timezone=True), nullable=True)
+
+
 class AgentVersion(Base):
     """A point-in-time snapshot of an agent's configuration."""
     __tablename__ = "agent_versions"

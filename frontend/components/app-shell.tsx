@@ -8,6 +8,7 @@ import { GetAPIStatus } from "@/app/api/os"
 import { usePermissionsStore } from "@/stores/permissions-store"
 import { AppSidebar } from "@/components/app-sidebar"
 import { HITLGlobalBadge } from "@/components/notifications/hitl-global-badge"
+import { AsyncJobsGlobalBadge } from "@/components/notifications/async-jobs-global-badge"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 
@@ -121,6 +122,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <AsyncJobsGlobalBadge />
             <HITLGlobalBadge />
             <Button
               variant="ghost"

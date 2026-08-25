@@ -225,11 +225,8 @@ class LLMProviderCollection:
     @classmethod
     async def delete(cls, db, provider_id: str, user_id: str) -> bool:
         collection = db[cls.collection_name]
-        result = await collection.update_one(
-            {"_id": ObjectId(provider_id), "user_id": user_id},
-            {"$set": {"is_active": False}}
-        )
-        return result.modified_count > 0
+        result = await collection.delete_one({"_id": ObjectId(provider_id), "user_id": user_id})
+        return result.deleted_count > 0
 
 
 class AgentCollection:
@@ -321,11 +318,8 @@ class TeamCollection:
     @classmethod
     async def delete(cls, db, team_id: str, user_id: str) -> bool:
         collection = db[cls.collection_name]
-        result = await collection.update_one(
-            {"_id": ObjectId(team_id), "user_id": user_id},
-            {"$set": {"is_active": False}}
-        )
-        return result.modified_count > 0
+        result = await collection.delete_one({"_id": ObjectId(team_id), "user_id": user_id})
+        return result.deleted_count > 0
 
 
 class WorkflowCollection:
@@ -586,11 +580,8 @@ class ToolDefinitionCollection:
     @classmethod
     async def delete(cls, db, tool_id: str, user_id: str) -> bool:
         collection = db[cls.collection_name]
-        result = await collection.update_one(
-            {"_id": ObjectId(tool_id), "user_id": user_id},
-            {"$set": {"is_active": False}}
-        )
-        return result.modified_count > 0
+        result = await collection.delete_one({"_id": ObjectId(tool_id), "user_id": user_id})
+        return result.deleted_count > 0
 
 
 class MCPServerCollection:
@@ -634,11 +625,8 @@ class MCPServerCollection:
     @classmethod
     async def delete(cls, db, server_id: str, user_id: str) -> bool:
         collection = db[cls.collection_name]
-        result = await collection.update_one(
-            {"_id": ObjectId(server_id), "user_id": user_id},
-            {"$set": {"is_active": False}}
-        )
-        return result.modified_count > 0
+        result = await collection.delete_one({"_id": ObjectId(server_id), "user_id": user_id})
+        return result.deleted_count > 0
 
 
 class FileAttachmentCollection:
@@ -807,11 +795,8 @@ class SkillCollection:
     @classmethod
     async def delete(cls, db, skill_id: str, user_id: str) -> bool:
         collection = db[cls.collection_name]
-        result = await collection.update_one(
-            {"_id": ObjectId(skill_id), "user_id": user_id},
-            {"$set": {"is_active": False}},
-        )
-        return result.modified_count > 0
+        result = await collection.delete_one({"_id": ObjectId(skill_id), "user_id": user_id})
+        return result.deleted_count > 0
 
 
 class KnowledgeBaseCollection:
@@ -862,11 +847,8 @@ class KnowledgeBaseCollection:
     @classmethod
     async def delete(cls, db, kb_id: str, user_id: str) -> bool:
         collection = db[cls.collection_name]
-        result = await collection.update_one(
-            {"_id": ObjectId(kb_id), "user_id": user_id},
-            {"$set": {"is_active": False}},
-        )
-        return result.modified_count > 0
+        result = await collection.delete_one({"_id": ObjectId(kb_id), "user_id": user_id})
+        return result.deleted_count > 0
 
 
 class WorkflowScheduleCollection:
@@ -1080,6 +1062,82 @@ class ToolProposalCollection:
         )
         return result.modified_count
 
+
+class AsyncJobCollection:
+    """
+    Collection helper for long-running MCP tool jobs awaiting background re-check
+    in MongoDB. Mirrors HITLApprovalCollection's session-ownership join pattern.
+    """
+    collection_name = "async_jobs"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index("session_id")
+        await collection.create_index("status")
+
+    @classmethod
+    async def create(cls, db, data: dict) -> dict:
+        collection = db[cls.collection_name]
+        data.setdefault("created_at", datetime.utcnow())
+        data.setdefault("status", "pending")
+        data.setdefault("poll_count", 0)
+        data.setdefault("seen", False)
+        result = await collection.insert_one(data)
+        data["_id"] = result.inserted_id
+        return data
+
+    @classmethod
+    async def find_by_id(cls, db, job_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"_id": ObjectId(job_id)})
+
+    @classmethod
+    async def find_all_pending(cls, db) -> list[dict]:
+        """Return every job with status='pending', across all users — used to
+        re-register APScheduler poll jobs on server startup."""
+        collection = db[cls.collection_name]
+        cursor = collection.find({"status": "pending"})
+        return await cursor.to_list(length=1000)
+
+    @classmethod
+    async def find_pending_by_user(cls, db, user_id: str) -> list[dict]:
+        """Return unresolved (pending) or just-resolved-but-unseen jobs for
+        sessions owned by user_id — powers the notification badge."""
+        collection = db[cls.collection_name]
+        sessions_coll = db["sessions"]
+        cursor = sessions_coll.find({"user_id": user_id}, {"_id": 1})
+        session_docs = await cursor.to_list(length=1000)
+        session_ids = [str(s["_id"]) for s in session_docs]
+        if not session_ids:
+            return []
+        cursor = collection.find({
+            "session_id": {"$in": session_ids},
+            "$or": [{"status": "pending"}, {"status": {"$ne": "pending"}, "seen": False}],
+        })
+        return await cursor.to_list(length=100)
+
+    @classmethod
+    async def update(cls, db, job_id: str, updates: dict) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one_and_update(
+            {"_id": ObjectId(job_id)},
+            {"$set": updates},
+            return_document=True,
+        )
+
+    @classmethod
+    async def mark_seen(cls, db, job_id: str, user_id: str) -> bool:
+        """Mark a resolved job as seen/dismissed, scoped to sessions the user owns."""
+        collection = db[cls.collection_name]
+        job = await collection.find_one({"_id": ObjectId(job_id)})
+        if not job:
+            return False
+        session = await db["sessions"].find_one({"_id": ObjectId(job["session_id"]), "user_id": user_id})
+        if not session:
+            return False
+        await collection.update_one({"_id": ObjectId(job_id)}, {"$set": {"seen": True}})
+        return True
 
 class AgentMemoryCollection:
     """Collection helper for long-term agent memory facts in MongoDB."""

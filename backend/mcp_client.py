@@ -12,6 +12,7 @@ from typing import AsyncIterator
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamablehttp_client
 
 logger = logging.getLogger(__name__)
 
@@ -106,15 +107,31 @@ async def connect_mcp_sse(
 
 
 @asynccontextmanager
+async def connect_mcp_streamable_http(
+    server_id: str,
+    server_name: str,
+    url: str,
+    headers: dict[str, str] | None = None,
+) -> AsyncIterator[MCPConnection]:
+    """Connect to an MCP server via Streamable HTTP transport."""
+    async with streamablehttp_client(url, headers=headers or {}) as (read, write, _get_session_id):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            conn = MCPConnection(server_id, server_name, session)
+            await conn.discover_tools()
+            yield conn
+
+
+@asynccontextmanager
 async def connect_mcp_server(server_config: dict) -> AsyncIterator[MCPConnection]:
     """Connect to an MCP server using its stored config.
 
     server_config should contain:
         - id or _id (str)
         - name (str)
-        - transport_type ("stdio" | "sse")
+        - transport_type ("stdio" | "sse" | "streamable_http")
         - command, args_json, env_json (for stdio)
-        - url, headers_json (for sse)
+        - url, headers_json (for sse / streamable_http)
     """
     server_id = str(server_config.get("id") or server_config.get("_id"))
     server_name = server_config["name"]
@@ -151,6 +168,19 @@ async def connect_mcp_server(server_config: dict) -> AsyncIterator[MCPConnection
             headers = None
 
         async with connect_mcp_sse(server_id, server_name, url, headers) as conn:
+            yield conn
+
+    elif transport in ("streamable_http", "http", "streamable-http"):
+        url = server_config.get("url", "")
+        headers_raw = server_config.get("headers_json") or server_config.get("headers")
+        if isinstance(headers_raw, str):
+            headers = json.loads(headers_raw)
+        elif isinstance(headers_raw, dict):
+            headers = headers_raw
+        else:
+            headers = None
+
+        async with connect_mcp_streamable_http(server_id, server_name, url, headers) as conn:
             yield conn
 
     else:

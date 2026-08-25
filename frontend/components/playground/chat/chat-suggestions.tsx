@@ -245,7 +245,7 @@ export function ChatSuggestions({
   )
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-8 px-4">
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 px-4">
       {/* Header */}
       <motion.div
         className="flex flex-col items-center gap-4"
@@ -253,15 +253,15 @@ export function ChatSuggestions({
         animate={fadeInUp.animate}
         transition={springTransition}
       >
-        <div className="flex items-center justify-center h-20 w-20 rounded-2xl bg-muted">
-          <Bot className="h-10 w-10 text-muted-foreground" />
+        <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-muted">
+          <Bot className="h-6 w-6 text-muted-foreground" />
         </div>
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+        <div className="text-center space-y-1.5">
+          <h2 className="text-lg sm:text-xl font-semibold tracking-tight">
             {name || "Start a conversation"}
           </h2>
           {description && (
-            <p className="text-base text-muted-foreground max-w-md">
+            <p className="text-sm text-muted-foreground max-w-md">
               {description}
             </p>
           )}
@@ -301,8 +301,8 @@ export function ChatSuggestions({
           >
             <PromptSuggestion
               onClick={() => onSelect(s.prompt)}
-              size="lg"
-              className="rounded-full cursor-pointer"
+              size="sm"
+              className="rounded-full cursor-pointer text-sm"
             >
               {s.label}
             </PromptSuggestion>

@@ -495,7 +495,7 @@ async def delete_provider(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
 
-    provider.is_active = False
+    db.delete(provider)
     db.commit()
     return {"message": "Provider deleted"}
 

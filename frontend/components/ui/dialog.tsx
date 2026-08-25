@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { XIcon } from "lucide-react"
+import { XIcon, Maximize2, Minimize2 } from "lucide-react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 import { AnimatePresence, motion, type HTMLMotionProps } from "motion/react"
 
@@ -94,6 +94,7 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  showFullscreenButton = false,
   from = "top",
   onOpenAutoFocus,
   onCloseAutoFocus,
@@ -108,12 +109,17 @@ function DialogContent({
 > &
   HTMLMotionProps<"div"> & {
     showCloseButton?: boolean
+    /** Adds a maximize/restore toggle next to the close button, letting the user
+     *  expand the dialog to fill the viewport — useful for dialogs with long-form
+     *  content (skill/prompt instructions, code, etc.) that outgrow the default size. */
+    showFullscreenButton?: boolean
     from?: "top" | "bottom" | "left" | "right"
   }) {
   const initialRotation =
     from === "bottom" || from === "left" ? "20deg" : "-20deg"
   const isVertical = from === "top" || from === "bottom"
   const rotateAxis = isVertical ? "rotateX" : "rotateY"
+  const [isFullscreen, setIsFullscreen] = React.useState(false)
 
   return (
     <DialogPortal>
@@ -130,6 +136,7 @@ function DialogContent({
         <motion.div
           key="dialog-content"
           data-slot="dialog-content"
+          data-fullscreen={isFullscreen || undefined}
           initial={{
             opacity: 0,
             filter: "blur(4px)",
@@ -147,21 +154,36 @@ function DialogContent({
           }}
           transition={transition}
           className={cn(
-            "bg-background fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-2xl border p-6 shadow-xl outline-none sm:max-w-lg",
+            "bg-background fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100vh-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-2xl border p-6 shadow-xl outline-none sm:max-w-lg",
+            isFullscreen &&
+              "top-4! left-4! translate-x-0! translate-y-0! max-w-none! w-[calc(100%-2rem)]! h-[calc(100vh-2rem)]! max-h-[calc(100vh-2rem)]! flex! flex-col!",
             className
           )}
           {...props}
         >
           {children}
-          {showCloseButton && (
-            <DialogPrimitive.Close
-              data-slot="dialog-close"
-              className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-lg p-1.5 opacity-70 cursor-pointer transition-all hover:opacity-100 hover:bg-accent focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-            >
-              <XIcon />
-              <span className="sr-only">Close</span>
-            </DialogPrimitive.Close>
-          )}
+          <div className="absolute top-4 right-4 flex items-center gap-1">
+            {showFullscreenButton && (
+              <button
+                type="button"
+                onClick={() => setIsFullscreen((v) => !v)}
+                className="ring-offset-background focus:ring-ring text-muted-foreground rounded-lg p-1.5 opacity-70 cursor-pointer transition-all hover:opacity-100 hover:bg-accent hover:text-foreground focus:ring-2 focus:ring-offset-2 focus:outline-hidden [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+                title={isFullscreen ? "Restore" : "Expand to fullscreen"}
+              >
+                {isFullscreen ? <Minimize2 /> : <Maximize2 />}
+                <span className="sr-only">{isFullscreen ? "Restore" : "Expand to fullscreen"}</span>
+              </button>
+            )}
+            {showCloseButton && (
+              <DialogPrimitive.Close
+                data-slot="dialog-close"
+                className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground rounded-lg p-1.5 opacity-70 cursor-pointer transition-all hover:opacity-100 hover:bg-accent focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+              >
+                <XIcon />
+                <span className="sr-only">Close</span>
+              </DialogPrimitive.Close>
+            )}
+          </div>
         </motion.div>
       </DialogPrimitive.Content>
     </DialogPortal>
@@ -172,7 +194,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      className={cn("flex flex-col gap-2 text-center sm:text-left shrink-0", className)}
       {...props}
     />
   )
@@ -190,7 +212,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end shrink-0",
         className
       )}
       {...props}

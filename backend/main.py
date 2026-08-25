@@ -62,6 +62,7 @@ if DATABASE_TYPE == "mongo":
         ToolProposalCollection,
         WhatsAppChannelCollection,
         WAContactSessionCollection,
+        AsyncJobCollection,
     )
 
 
@@ -899,6 +900,57 @@ async def _load_active_schedules():
         logging.getLogger(__name__).error(f"Failed to load active schedules: {e}")
 
 
+async def _load_pending_async_jobs():
+    """Re-register APScheduler poll jobs for all pending AsyncJob records on startup.
+    Without this, jobs created before a server restart would never be re-checked
+    again (APScheduler's in-memory trigger registration doesn't survive restarts
+    even though the jobstore itself persists the schedule metadata for cron jobs;
+    for on-the-fly IntervalTrigger jobs we re-add them explicitly here)."""
+    from scheduler import scheduler as _sched
+    from apscheduler.triggers.interval import IntervalTrigger
+    try:
+        if DATABASE_TYPE == "mongo":
+            from async_job_poller import poll_async_job_mongo
+            mongo_db = get_database()
+            jobs = await AsyncJobCollection.find_all_pending(mongo_db)
+            for j in jobs:
+                job_id = str(j["_id"])
+                try:
+                    _sched.add_job(
+                        poll_async_job_mongo,
+                        trigger=IntervalTrigger(seconds=j.get("interval_seconds", 30)),
+                        args=[job_id],
+                        id=f"async_job_{job_id}",
+                        replace_existing=True,
+                    )
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Could not restore async job {job_id}: {e}")
+        else:
+            from async_job_poller import poll_async_job_sqlite
+            from models import AsyncJob
+            db = get_db_sync()
+            try:
+                jobs = db.query(AsyncJob).filter(AsyncJob.status == "pending").all()
+                for j in jobs:
+                    try:
+                        _sched.add_job(
+                            poll_async_job_sqlite,
+                            trigger=IntervalTrigger(seconds=j.interval_seconds),
+                            args=[j.id],
+                            id=f"async_job_{j.id}",
+                            replace_existing=True,
+                        )
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).warning(f"Could not restore async job {j.id}: {e}")
+            finally:
+                db.close()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to load pending async jobs: {e}")
+
+
 def get_db_sync():
     """Return a raw SQLAlchemy session (not a FastAPI dependency)."""
     from database import SessionLocal
@@ -947,6 +999,7 @@ async def lifespan(app: FastAPI):
         await ToolProposalCollection.create_indexes(db)
         await WhatsAppChannelCollection.create_indexes(db)
         await WAContactSessionCollection.create_indexes(db)
+        await AsyncJobCollection.create_indexes(db)
         # Auto-deny any HITL approvals left pending from a previous server run
         await HITLApprovalCollection.deny_all_pending(db)
         # Auto-reject any tool proposals left pending from a previous server run
@@ -969,6 +1022,7 @@ async def lifespan(app: FastAPI):
     from scheduler import scheduler as _scheduler, configure_scheduler
     configure_scheduler()
     await _load_active_schedules()
+    await _load_pending_async_jobs()
 
     # ── Maintenance jobs (module-level functions so APScheduler can pickle them) ─
     from apscheduler.triggers.cron import CronTrigger as _CronTrigger

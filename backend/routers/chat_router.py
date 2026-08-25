@@ -10,8 +10,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from config import DATABASE_TYPE
 from database import get_db
-from models import Session as SessionModel, Message, Agent, LLMProvider, ToolDefinition, Team, MCPServer, FileAttachment, KnowledgeBase, HITLApproval, AgentMemory, TraceSpan, ToolProposal, Skill
-from schemas import ChatRequest, RateMessageRequest, HITLApprovalResponse, HITLPendingListResponse, ToolProposalResponse, ToolProposalPendingListResponse
+from models import Session as SessionModel, Message, Agent, LLMProvider, ToolDefinition, Team, MCPServer, FileAttachment, KnowledgeBase, HITLApproval, AgentMemory, TraceSpan, ToolProposal, Skill, AsyncJob
+from schemas import ChatRequest, RateMessageRequest, HITLApprovalResponse, HITLPendingListResponse, ToolProposalResponse, ToolProposalPendingListResponse, AsyncJobResponse, AsyncJobPendingListResponse
 from auth import get_current_user, TokenData
 from encryption import decrypt_api_key
 from llm.base import LLMMessage, LLMToolCall
@@ -20,11 +20,12 @@ from mcp_client import connect_mcp_server, parse_mcp_tool_name, MCPConnection
 from file_storage import FileStorageService
 from rag_service import RAGService
 from sandbox_tools import SANDBOX_TOOL_SCHEMAS, execute_sandbox_tool, is_sandbox_tool
+from async_job_tools import SCHEDULE_ASYNC_CHECK_TOOL_SCHEMA, is_async_job_tool, execute_schedule_async_check
 from builtin_tools import BUILTIN_TOOL_SCHEMAS, execute_builtin_tool, is_builtin_tool
 
 if DATABASE_TYPE == "mongo":
     from database_mongo import get_database
-    from models_mongo import SessionCollection, MessageCollection, AgentCollection, LLMProviderCollection, ToolDefinitionCollection, SkillCollection, TeamCollection, MCPServerCollection, FileAttachmentCollection, KnowledgeBaseCollection, HITLApprovalCollection, AgentMemoryCollection, ToolProposalCollection
+    from models_mongo import SessionCollection, MessageCollection, AgentCollection, LLMProviderCollection, ToolDefinitionCollection, SkillCollection, TeamCollection, MCPServerCollection, FileAttachmentCollection, KnowledgeBaseCollection, HITLApprovalCollection, AgentMemoryCollection, ToolProposalCollection, AsyncJobCollection
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +196,8 @@ Rules:
 - Use artifacts for content the user might want to edit, save, or reuse
 - You may reference the artifact by title in your surrounding explanation
 - Do NOT wrap artifacts in markdown code fences
+- CRITICAL: every `<artifact ...>` you open MUST be closed with a matching `</artifact>` before you stop generating or move on to other text. Never leave an artifact tag unclosed — write the complete content, then close it, in one uninterrupted block.
+- CRITICAL: this applies even to large, multi-file-feeling, or multi-page builds. If you plan to write a lot of code (a full landing page + auth pages + CSS in one file, for example), you still open the `<artifact ...>` tag as the VERY FIRST thing before writing a single character of code — never write "Here's the full build:" followed by raw CSS/HTML/JS with no tag around it. Explanatory prose goes BEFORE the opening tag or AFTER the closing tag, never mixed with unwrapped code in between.
 
 ## Editing existing artifacts — PATCHES ONLY (NEVER rewrite the full artifact)
 When the user message contains [EDIT ARTIFACT id="..." title="..." type="..."] followed by the current content, you MUST respond with a patch. NEVER output a full <artifact> tag when editing an existing artifact.
@@ -788,15 +791,36 @@ def _extract_preview_block(full_content: str) -> tuple[str, bool] | None:
 
 
 _ARTIFACT_TAG_RE = re.compile(
-    r'<artifact\s+([^>]*)>(.*?)</artifact>',
+    r'<artifact\s+([^>]*)>(.*?)</artifact\s*>',
     re.DOTALL,
 )
 _ARTIFACT_OPEN_RE = re.compile(r'<artifact\s+([^>]*)>')
-_ARTIFACT_ATTR_RE = re.compile(r'(\w[\w-]*)\s*=\s*"([^"]*)"')
+# Tolerant of double quotes (standard), single quotes, and bare unquoted values —
+# smaller/local models don't always follow the double-quote convention exactly.
+_ARTIFACT_ATTR_RE = re.compile(
+    r'''(\w[\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))'''
+)
+# A model that wraps its artifact in a markdown code fence despite being told not to
+# (```html\n<artifact ...>...\n```). Stripped before the tag regexes run.
+_ARTIFACT_FENCE_RE = re.compile(
+    r'```[a-zA-Z]*\s*\n(<artifact.*?</artifact\s*>)\s*\n?```',
+    re.DOTALL,
+)
 
 
 def _parse_artifact_attrs(attrs_str: str) -> dict:
-    return {m.group(1): m.group(2) for m in _ARTIFACT_ATTR_RE.finditer(attrs_str)}
+    attrs = {}
+    for m in _ARTIFACT_ATTR_RE.finditer(attrs_str):
+        key = m.group(1)
+        value = m.group(2) if m.group(2) is not None else (m.group(3) if m.group(3) is not None else m.group(4))
+        attrs[key] = value
+    return attrs
+
+
+def _unwrap_fenced_artifacts(content: str) -> str:
+    """Strip a markdown code fence wrapped directly around an <artifact> block,
+    which some local models emit despite being told not to fence artifacts."""
+    return _ARTIFACT_FENCE_RE.sub(lambda m: m.group(1), content)
 
 
 def _scan_artifacts(full_content: str, prev_content: str, edit_target: tuple | None = None) -> list:
@@ -813,6 +837,11 @@ def _scan_artifacts(full_content: str, prev_content: str, edit_target: tuple | N
         if edit_target:
             return edit_target[0], edit_target[1], edit_target[2]
         return artifact_id, title, atype
+
+    # Some local models wrap the whole <artifact> block in a code fence despite
+    # being told not to — strip that before scanning so the tag regexes still match.
+    full_content = _unwrap_fenced_artifacts(full_content)
+    prev_content = _unwrap_fenced_artifacts(prev_content)
 
     events = []
     # First pass: complete tags
@@ -864,6 +893,98 @@ def _scan_artifacts(full_content: str, prev_content: str, edit_target: tuple | N
             })})
 
     return events
+
+
+def _finalize_dangling_artifacts(full_content: str, edit_target: tuple | None = None) -> tuple[list, str]:
+    """
+    Called once, right before the stream ends. If the model opened an <artifact> tag
+    but never emitted the closing </artifact> — common with smaller/local models that
+    drift off-format, hit a stop token early, or get confused mid-generation — this
+    auto-closes it with whatever content was captured and emits a final is_complete
+    event. Without this, the frontend has no terminal signal for that artifact and
+    silently discards the in-progress view once the stream ends.
+
+    Also covers the rarer case where the model skipped the <artifact> tag entirely
+    and emitted raw code as plain message text (see _detect_unwrapped_code_leak) —
+    that gets synthesized into an artifact too, and its text is cut from the return
+    value so the chat bubble doesn't also show the raw code dump.
+
+    Returns (events, cleaned_full_content).
+    """
+    full_content = _unwrap_fenced_artifacts(full_content)
+    closed_ids = {
+        _parse_artifact_attrs(m.group(1)).get("id", "")
+        for m in _ARTIFACT_TAG_RE.finditer(full_content)
+    }
+
+    events = []
+    for m in _ARTIFACT_OPEN_RE.finditer(full_content):
+        attrs = _parse_artifact_attrs(m.group(1))
+        artifact_id = attrs.get("id", "")
+        if not artifact_id or artifact_id in closed_ids:
+            continue
+        content = full_content[m.end():].strip()
+        if not content:
+            continue
+        eid, etitle, etype = (edit_target if edit_target else
+                               (artifact_id, attrs.get("title", "Artifact"), attrs.get("type", "text")))
+        events.append({"event": "artifact", "data": json.dumps({
+            "id": eid,
+            "title": etitle,
+            "type": etype,
+            "content": content,
+            "is_complete": True,
+        })})
+
+    if not events:
+        leaked = _detect_unwrapped_code_leak(full_content)
+        if leaked:
+            atype = "html" if re.search(r'<!doctype\s+html|<html[\s>]', leaked, re.IGNORECASE) else "css"
+            eid, etitle, etype = (edit_target if edit_target else
+                                   ("recovered_artifact", "Recovered content", atype))
+            events.append({"event": "artifact", "data": json.dumps({
+                "id": eid,
+                "title": etitle,
+                "type": etype,
+                "content": leaked,
+                "is_complete": True,
+            })})
+            full_content = full_content[:full_content.rfind(leaked)].rstrip()
+
+    return events, full_content
+
+
+# Matches a CSS custom-property declaration block (":root{ --foo:bar; ... }") or a
+# run of "selector { property:value; ... }" rules — the shape of raw CSS leaking as
+# plain text. Also matches a bare "<!DOCTYPE" / "<html" start with no artifact tag.
+_RAW_CODE_LEAK_RE = re.compile(
+    r'(:root\s*\{[^}]{40,}\}|(?:[.#]?[\w-]+\s*\{\s*[\w-]+\s*:[^{}]{10,}\}\s*){3,}|<!doctype\s+html|<html[\s>])',
+    re.IGNORECASE,
+)
+
+
+def _detect_unwrapped_code_leak(full_content: str, min_len: int = 400) -> str | None:
+    """
+    Safety net for the rare case where the model ignores the artifact-tag instruction
+    entirely on a large build and emits raw CSS/HTML directly as message text (no
+    <artifact> tag anywhere). Only fires when there is NO artifact tag in the whole
+    response and a long trailing run of the content looks unambiguously like raw
+    code (dense CSS rule blocks or an HTML document start) rather than prose —
+    conservative on purpose to avoid mangling legitimate text responses.
+    Returns the leaked code substring (from its detected start to end) or None.
+    """
+    if "<artifact" in full_content.lower():
+        return None
+    m = _RAW_CODE_LEAK_RE.search(full_content)
+    if not m:
+        return None
+    # Walk back to the start of the line so we don't split mid-sentence, then
+    # require the remaining tail to be substantial before treating it as a leak.
+    start = full_content.rfind("\n", 0, m.start()) + 1
+    tail = full_content[start:].strip()
+    if len(tail) < min_len:
+        return None
+    return tail
 
 
 def _scan_content_for_elements(full_content: str, prev_len: int, edit_target: tuple | None = None) -> list:
@@ -1890,6 +2011,9 @@ async def _chat_sqlite(request: ChatRequest, current_user: TokenData, db: DBSess
     if _sandbox_active:
         tools = list(tools or []) + SANDBOX_TOOL_SCHEMAS
     mcp_server_configs = _load_mcp_server_configs(agent, db)
+    # schedule_async_check only makes sense when there's an MCP server to poll
+    if mcp_server_configs:
+        tools = list(tools or []) + [SCHEDULE_ASYNC_CHECK_TOOL_SCHEMA]
 
     if request.stream:
         if mcp_server_configs:
@@ -2478,6 +2602,8 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
                     result = await execute_builtin_tool(tc.name, tc.arguments)
                 elif is_sandbox_tool(tc.name):
                     result = await execute_sandbox_tool(tc.name, tc.arguments, _sandbox_cid) if _sandbox_cid else json.dumps({"error": "Sandbox is not running for this agent"})
+                elif is_async_job_tool(tc.name):
+                    result = await execute_schedule_async_check(tc.arguments, session_id, agent_id, mcp_server_configs, "sqlite", db)
                 else:
                     result = _execute_tool(tc.name, tc.arguments, db)
                 _tc.record_tool_span(
@@ -2559,6 +2685,10 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
             session_obj.total_input_tokens = (session_obj.total_input_tokens or 0) + input_tokens
             session_obj.total_output_tokens = (session_obj.total_output_tokens or 0) + output_tokens
             db.commit()
+
+        _finalize_events, full_content = _finalize_dangling_artifacts(full_content, edit_target=edit_target)
+        for ev in _finalize_events:
+            yield ev
 
         msg_response = {
             "id": str(assistant_msg.id),
@@ -2972,6 +3102,10 @@ async def _stream_response_with_mcp(llm, messages, system_prompt, db, session_id
                 session_obj.total_input_tokens = (session_obj.total_input_tokens or 0) + input_tokens
                 session_obj.total_output_tokens = (session_obj.total_output_tokens or 0) + output_tokens
                 db.commit()
+
+            _finalize_events, full_content = _finalize_dangling_artifacts(full_content, edit_target=edit_target)
+            for ev in _finalize_events:
+                yield ev
 
             msg_response = {
                 "id": str(assistant_msg.id), "session_id": str(session_id), "role": "assistant",
@@ -3733,6 +3867,9 @@ async def _chat_mongo(request: ChatRequest, current_user: TokenData, start_time:
     if _sandbox_active_mongo:
         tools = list(tools or []) + SANDBOX_TOOL_SCHEMAS
     mcp_server_configs = await _load_mcp_server_configs_mongo(agent, mongo_db)
+    # schedule_async_check only makes sense when there's an MCP server to poll
+    if mcp_server_configs:
+        tools = list(tools or []) + [SCHEDULE_ASYNC_CHECK_TOOL_SCHEMA]
 
     if request.stream:
         if mcp_server_configs:
@@ -4080,6 +4217,8 @@ async def _stream_response_mongo(llm, messages, system_prompt, mongo_db, session
                     result = await execute_builtin_tool(tc.name, tc.arguments)
                 elif is_sandbox_tool(tc.name):
                     result = await execute_sandbox_tool(tc.name, tc.arguments, _sandbox_cid) if _sandbox_cid else json.dumps({"error": "Sandbox is not running for this agent"})
+                elif is_async_job_tool(tc.name):
+                    result = await execute_schedule_async_check(tc.arguments, session_id, agent_id, mcp_server_configs, "mongo", mongo_db)
                 else:
                     result = await _execute_tool_mongo(tc.name, tc.arguments, mongo_db)
                 await _record_tool_span_mongo(
@@ -4142,6 +4281,10 @@ async def _stream_response_mongo(llm, messages, system_prompt, mongo_db, session
             },
         )
         updated_session = await SessionCollection.find_by_id(mongo_db, session_id)
+
+        _finalize_events, full_content = _finalize_dangling_artifacts(full_content, edit_target=edit_target)
+        for ev in _finalize_events:
+            yield ev
 
         msg_response = {
             "id": str(msg["_id"]), "session_id": session_id, "role": "assistant",
@@ -4545,6 +4688,10 @@ async def _stream_response_with_mcp_mongo(llm, messages, system_prompt, mongo_db
                 },
             )
             updated_session = await SessionCollection.find_by_id(mongo_db, session_id)
+
+            _finalize_events, full_content = _finalize_dangling_artifacts(full_content, edit_target=edit_target)
+            for ev in _finalize_events:
+                yield ev
 
             msg_response = {
                 "id": str(msg["_id"]), "session_id": session_id, "role": "assistant",
@@ -5028,6 +5175,85 @@ async def get_all_pending_hitl(
         )
         for a in approvals
     ])
+
+
+@router.get("/async-jobs/pending", response_model=AsyncJobPendingListResponse)
+async def get_pending_async_jobs(
+    current_user: TokenData = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Return unresolved-or-unseen background job checks (from schedule_async_check)
+    for the current user across all sessions. Powers the async-job notification badge.
+    """
+    if DATABASE_TYPE == "mongo":
+        mongo_db = get_database()
+        jobs = await AsyncJobCollection.find_pending_by_user(mongo_db, str(current_user.user_id))
+        return AsyncJobPendingListResponse(jobs=[
+            AsyncJobResponse(
+                job_id=str(j["_id"]),
+                session_id=str(j["session_id"]),
+                description=j["description"],
+                status=j.get("status", "pending"),
+                poll_count=j.get("poll_count", 0),
+                last_result=j.get("last_result"),
+                error=j.get("error"),
+                created_at=j["created_at"].isoformat() if j.get("created_at") else None,
+                resolved_at=j["resolved_at"].isoformat() if j.get("resolved_at") else None,
+            )
+            for j in jobs
+        ])
+
+    jobs = (
+        db.query(AsyncJob)
+        .join(SessionModel, SessionModel.id == AsyncJob.session_id)
+        .filter(
+            SessionModel.user_id == int(current_user.user_id),
+            (AsyncJob.status == "pending") | (AsyncJob.seen == False),
+        )
+        .all()
+    )
+    return AsyncJobPendingListResponse(jobs=[
+        AsyncJobResponse(
+            job_id=str(j.id),
+            session_id=str(j.session_id),
+            description=j.description,
+            status=j.status,
+            poll_count=j.poll_count,
+            last_result=j.last_result,
+            error=j.error,
+            created_at=j.created_at.isoformat() if j.created_at else None,
+            resolved_at=j.resolved_at.isoformat() if j.resolved_at else None,
+        )
+        for j in jobs
+    ])
+
+
+@router.post("/async-jobs/{job_id}/seen")
+async def mark_async_job_seen(
+    job_id: str,
+    current_user: TokenData = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Dismiss a resolved async job from the notification badge."""
+    if DATABASE_TYPE == "mongo":
+        mongo_db = get_database()
+        ok = await AsyncJobCollection.mark_seen(mongo_db, job_id, str(current_user.user_id))
+        if not ok:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {"status": "seen"}
+
+    job = (
+        db.query(AsyncJob)
+        .join(SessionModel, SessionModel.id == AsyncJob.session_id)
+        .filter(AsyncJob.id == int(job_id), SessionModel.user_id == int(current_user.user_id))
+        .first()
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.seen = True
+    db.commit()
+    return {"status": "seen"}
 
 
 @router.post("/sessions/{session_id}/tool-proposals/{proposal_id}/approve")

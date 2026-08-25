@@ -55,6 +55,7 @@ import type {
   CreateWAChannelRequest,
   UpdateWAChannelRequest,
   HITLApprovalItem,
+  AsyncJobItem,
   Skill,
 } from "@/types/playground"
 
@@ -920,6 +921,16 @@ class ApiClient {
   async getGlobalPendingHITL(): Promise<HITLApprovalItem[]> {
     const result = await this.request<{ approvals: HITLApprovalItem[] }>(AppRoutes.HITLGlobalPending())
     return result.approvals || []
+  }
+
+  // ============= Global Async Jobs =============
+  async getGlobalPendingAsyncJobs(): Promise<AsyncJobItem[]> {
+    const result = await this.request<{ jobs: AsyncJobItem[] }>(AppRoutes.AsyncJobsGlobalPending())
+    return result.jobs || []
+  }
+
+  async markAsyncJobSeen(jobId: string): Promise<void> {
+    await this.request(AppRoutes.AsyncJobMarkSeen(jobId), { method: "POST" })
   }
 }
 

@@ -85,7 +85,7 @@ export function EditPermissionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md min-w-200">
+      <DialogContent showFullscreenButton className="sm:max-w-md min-w-200">
         <DialogHeader>
           <DialogTitle className="uppercase">Edit User: {user.username}</DialogTitle>
           <DialogDescription>

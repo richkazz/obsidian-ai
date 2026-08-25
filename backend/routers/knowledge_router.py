@@ -234,6 +234,7 @@ async def delete_knowledge_base(
         if not kb or not _owns_kb(kb, current_user, is_mongo=True):
             raise HTTPException(status_code=404, detail="Knowledge base not found")
         await KnowledgeBaseCollection.delete(mongo_db, kb_id, current_user.user_id)
+        await mongo_db[KBDocumentCollection.collection_name].delete_many({"kb_id": kb_id})
         RAGService.delete_kb_index(kb_id)
         # Remove this KB from any agent that references it
         agents_col = mongo_db["agents"]
@@ -257,7 +258,8 @@ async def delete_knowledge_base(
     ).first()
     if not kb:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
-    kb.is_active = False
+    db.query(KnowledgeBaseDocument).filter(KnowledgeBaseDocument.kb_id == int(kb_id)).delete(synchronize_session=False)
+    db.delete(kb)
     db.commit()
     RAGService.delete_kb_index(kb_id)
     # Remove this KB from any agent that references it

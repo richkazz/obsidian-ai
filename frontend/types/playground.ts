@@ -457,7 +457,7 @@ export interface MCPServer {
   id: string
   name: string
   description?: string
-  transport_type: "stdio" | "sse"
+  transport_type: "stdio" | "sse" | "streamable_http"
   command?: string
   args?: string[]
   env?: Record<string, string>
@@ -470,7 +470,7 @@ export interface MCPServer {
 export interface CreateMCPServerRequest {
   name: string
   description?: string
-  transport_type: "stdio" | "sse"
+  transport_type: "stdio" | "sse" | "streamable_http"
   command?: string
   args?: string[]
   env?: Record<string, string>
@@ -481,7 +481,7 @@ export interface CreateMCPServerRequest {
 export interface UpdateMCPServerRequest {
   name?: string
   description?: string
-  transport_type?: "stdio" | "sse"
+  transport_type?: "stdio" | "sse" | "streamable_http"
   command?: string
   args?: string[]
   env?: Record<string, string>
@@ -887,4 +887,16 @@ export interface HITLApprovalItem {
   tool_call_id: string
   tool_name: string
   tool_arguments: Record<string, unknown> | null
+}
+
+export interface AsyncJobItem {
+  job_id: string
+  session_id: string
+  description: string
+  status: "pending" | "completed" | "failed" | "expired"
+  poll_count: number
+  last_result: string | null
+  error: string | null
+  created_at: string | null
+  resolved_at: string | null
 }

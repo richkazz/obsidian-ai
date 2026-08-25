@@ -198,7 +198,7 @@ export function MCPServersSelector({ onAddServer, onEditServer, hideAdd }: MCPSe
                           </div>
                         )}
                         <div className="text-muted-foreground/60 mt-0.5">
-                          {server.transport_type === "stdio" ? "stdio" : "sse"}{" "}
+                          {server.transport_type}{" "}
                           {server.transport_type === "stdio"
                             ? `· ${server.command || ""}`
                             : `· ${server.url || ""}`}

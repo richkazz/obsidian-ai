@@ -178,7 +178,7 @@ export function ProviderDialog({ open, onOpenChange, provider, onUpdated }: Prov
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent showFullscreenButton className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{isEditMode ? "Edit Provider" : "Add LLM Provider"}</DialogTitle>
           <DialogDescription>
