@@ -129,14 +129,26 @@ def _should_send_voice(channel: dict, wa_sender: str) -> bool:
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
-async def handle_incoming_message(payload: dict, db) -> None:
+async def handle_incoming_message(payload: dict, db=None) -> None:
     """
     Route an incoming WhatsApp message. Returns immediately — all work is async.
     """
     if DATABASE_TYPE == "mongo":
         await _handle_mongo(payload)
-    else:
+        return
+
+    # The webhook returns before processing the message, so it cannot reuse a
+    # request-scoped FastAPI dependency. Create and close a session for the
+    # background task when the caller did not explicitly supply one.
+    owns_session = db is None
+    if owns_session:
+        from database import SessionLocal
+        db = SessionLocal()
+    try:
         await _handle_sqlite(payload, db)
+    finally:
+        if owns_session:
+            db.close()
 
 
 # ── MongoDB ────────────────────────────────────────────────────────────────────
