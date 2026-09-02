@@ -759,6 +759,31 @@ npm run dev
 
 This starts both the frontend and backend concurrently.
 
+### Docker Compose
+
+Docker Compose reads deployment secrets from a **root** `.env` file. Generate
+the values once, keep that file out of source control, and do not change the
+keys after data has been encrypted with them:
+
+```bash
+cat > .env <<EOF
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+JWT_SECRET_KEY=$(openssl rand -hex 32)
+PROVIDER_KEY_SECRET=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+AUTH_SECRET=$(openssl rand -hex 32)
+EOF
+
+docker compose up -d --build
+```
+
+`ENCRYPTION_KEY` has to be identical in the `backend` and `frontend`
+containers. The frontend injects it at request time into browser code, which
+uses CryptoJS to encrypt registration and login payloads; the backend uses the
+same value to decrypt them. Compose injects the one root `.env` value into both
+containers and refuses to start if it is missing. `PROVIDER_KEY_SECRET` is a
+separate Fernet key for secrets stored at rest, `JWT_SECRET_KEY` signs backend
+access tokens, and `AUTH_SECRET` signs the frontend session.
+
 ### Environment Variables
 
 #### Backend (`backend/.env`)
