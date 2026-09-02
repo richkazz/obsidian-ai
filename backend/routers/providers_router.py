@@ -29,7 +29,6 @@ def _default_model_for_type(provider_type: str) -> str:
         "openai": "gpt-4o",
         "anthropic": "claude-sonnet-4-6",
         "google": "gemini-2.0-flash",
-        "ollama": "llama3",
         "openrouter": "openai/gpt-4o",
     }
     return defaults.get(provider_type, "gpt-4o")
@@ -234,7 +233,7 @@ async def import_provider(
         raise HTTPException(status_code=400, detail="Missing provider data or name")
 
     warnings: list[str] = []
-    known_types = {"openai", "anthropic", "google", "ollama", "openrouter", "custom"}
+    known_types = {"openai", "anthropic", "google", "openrouter", "custom"}
     if provider_data.get("provider_type") not in known_types:
         warnings.append(f"Unknown provider_type '{provider_data.get('provider_type')}' — imported as-is")
 
@@ -294,7 +293,7 @@ async def import_providers_bulk(
     if not isinstance(providers_data, list):
         raise HTTPException(status_code=400, detail="Missing or invalid providers array")
 
-    known_types = {"openai", "anthropic", "google", "ollama", "openrouter", "custom"}
+    known_types = {"openai", "anthropic", "google", "openrouter", "custom"}
     created_providers: list[LLMProviderResponse] = []
     all_warnings: list[str] = []
 

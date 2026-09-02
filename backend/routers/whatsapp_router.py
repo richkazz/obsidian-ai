@@ -704,31 +704,13 @@ async def delete_voice_sample(
     return {"ok": True}
 
 
-_whisper_model = None
-
-def _get_whisper_model():
-    global _whisper_model
-    if _whisper_model is None:
-        from faster_whisper import WhisperModel
-        _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
-    return _whisper_model
-
-def _run_transcription(audio_bytes: bytes) -> str | None:
-    import io
-    model = _get_whisper_model()
-    audio_buf = io.BytesIO(audio_bytes)
-    segments, _ = model.transcribe(audio_buf, beam_size=1)
-    text = " ".join(seg.text.strip() for seg in segments).strip()
-    return text or None
-
-
 @router.post("/transcribe")
 async def transcribe_audio(request: Request):
     """
     Called by the Baileys sidecar to transcribe a WhatsApp voice note.
     Receives multipart/form-data with field 'file', returns {"text": "..."}.
     No user auth — sidecar is localhost-only.
-    All processing is in-memory; no temp files written.
+    All processing is routed via Groq Whisper API (stt_service).
     """
     form = await request.form()
     upload = form.get("file")
@@ -736,11 +718,12 @@ async def transcribe_audio(request: Request):
         raise HTTPException(400, "No file field in form data")
 
     audio_bytes = await upload.read()
+    filename = getattr(upload, "filename", "voice.ogg") or "voice.ogg"
     await upload.close()
 
     try:
-        loop = asyncio.get_event_loop()
-        text = await loop.run_in_executor(None, _run_transcription, audio_bytes)
+        from services.stt_service import transcribe_audio as groq_transcribe
+        text = await groq_transcribe(audio_bytes, filename=filename)
         return {"text": text}
     except Exception as e:
         raise HTTPException(500, f"Transcription failed: {e}")

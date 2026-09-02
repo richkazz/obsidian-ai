@@ -1,24 +1,8 @@
 """
-TTS service — multi-backend text-to-speech with automatic selection.
+TTS service — Google Cloud Text-to-Speech API integration.
 
-Backend selection (in priority order):
-  1. Qwen3-TTS  — high quality, requires CUDA GPU + qwen-tts package
-  2. Pocket TTS  — CPU-native, expressive (~24kHz) [classic fallback]
-  3. Kokoro      — CPU, fast, lightweight [last resort]
-
-Qwen3 preset voices (CustomVoice model):
-  English : Ryan, Aiden
-  Chinese : Vivian, Serena, Uncle_Fu, Dylan, Eric
-  Japanese: Ono_Anna
-  Korean  : Sohee
-
-Pocket TTS built-in voices: alba, marius, javert, jean, fantine, cosette, eponine, azelma
-
-Environment variables:
-  QWEN_TTS_SIZE    — "0.6B" (default) or "1.7B"
-  QWEN_TTS_DEVICE  — "cuda:0" (default)
-
-Output: OGG Opus bytes ready to send as a WhatsApp voice note.
+Synthesizes audio text via Google Cloud TTS REST API and normalizes/converts
+the audio output into OGG Opus format ready for WhatsApp using ffmpeg.
 """
 import io
 import logging
@@ -26,27 +10,20 @@ import os
 import re
 import subprocess
 import asyncio
+import httpx
 from typing import Optional
+
+from config import (
+    GOOGLE_TTS_API_KEY,
+    GOOGLE_TTS_LANGUAGE_CODE,
+    GOOGLE_TTS_VOICE_NAME,
+)
 
 logger = logging.getLogger(__name__)
 
-# ── Config ────────────────────────────────────────────────────────────────────
+GOOGLE_TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize"
 
-QWEN_TTS_SIZE   = os.environ.get("QWEN_TTS_SIZE", "0.6B")
-QWEN_TTS_DEVICE = os.environ.get("QWEN_TTS_DEVICE", "cuda:0")
-
-QWEN_CUSTOM_VOICE_MODEL = f"Qwen/Qwen3-TTS-12Hz-{QWEN_TTS_SIZE}-CustomVoice"
-QWEN_BASE_MODEL         = f"Qwen/Qwen3-TTS-12Hz-{QWEN_TTS_SIZE}-Base"
-
-# Qwen preset voices (CustomVoice model)
-QWEN_VOICES = {"Ryan", "Aiden", "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ono_Anna", "Sohee"}
-QWEN_DEFAULT_VOICE = "Ryan"
-
-# Pocket TTS voices (classic CPU backend)
-POCKET_VOICES = {"alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"}
-POCKET_MALE_DEFAULT = "marius"
-
-# ── ffmpeg ────────────────────────────────────────────────────────────────────
+# ── ffmpeg locator ────────────────────────────────────────────────────────────
 
 def _find_ffmpeg() -> str:
     import shutil
@@ -70,25 +47,10 @@ def _find_ffmpeg() -> str:
 
 FFMPEG_BIN = _find_ffmpeg()
 
-# ── Globals ───────────────────────────────────────────────────────────────────
-
-_qwen_custom_model      = None
-_qwen_base_model        = None
-_qwen_custom_available  = None   # None = untested, True/False after first attempt
-_qwen_base_available    = None
-# Cache: (audio_path_or_hash, ref_text) -> voice_clone_prompt object
-_voice_clone_prompt_cache: dict = {}
-
-_pocket_model       = None
-_pocket_available   = None
-_pocket_voice_states: dict = {}
-
-_kokoro_pipeline    = None
-
 # ── Text cleaning ─────────────────────────────────────────────────────────────
 
 def _clean_for_tts(text: str) -> str:
-    """Strip markdown and other non-speakable content before synthesis."""
+    """Strip markdown and non-speakable formatting."""
     text = re.sub(r"```[\s\S]*?```", "", text)
     text = re.sub(r"`[^`]+`", "", text)
     text = re.sub(r"https?://\S+", "", text)
@@ -98,260 +60,85 @@ def _clean_for_tts(text: str) -> str:
     return text.strip()
 
 
-# ── GPU detection ─────────────────────────────────────────────────────────────
-
-def _has_cuda() -> bool:
-    try:
-        import torch
-        if not torch.cuda.is_available():
-            return False
-        # Verify cuDNN is actually functional — a missing symbol causes a hard crash
-        torch.zeros(1, device="cuda")
-        return True
-    except Exception:
-        return False
-
-
-# ── Qwen3-TTS ─────────────────────────────────────────────────────────────────
-
-def _load_qwen_model(model_name: str):
-    """Load a Qwen3TTSModel directly onto the target device."""
-    import torch
-    from qwen_tts import Qwen3TTSModel
-    kwargs = dict(dtype=torch.bfloat16, device_map=QWEN_TTS_DEVICE, low_cpu_mem_usage=False)
-    try:
-        kwargs["attn_implementation"] = "flash_attention_2"
-        return Qwen3TTSModel.from_pretrained(model_name, **kwargs)
-    except Exception:
-        kwargs.pop("attn_implementation", None)
-        return Qwen3TTSModel.from_pretrained(model_name, **kwargs)
-
-
-def _get_qwen_custom():
-    global _qwen_custom_model, _qwen_custom_available
-    if _qwen_custom_available is False:
-        raise RuntimeError("Qwen3-TTS not available")
-    if _qwen_custom_model is not None:
-        return _qwen_custom_model
-    try:
-        _qwen_custom_model = _load_qwen_model(QWEN_CUSTOM_VOICE_MODEL)
-        _qwen_custom_available = True
-        logger.info("Qwen3-TTS CustomVoice loaded (%s)", QWEN_CUSTOM_VOICE_MODEL)
-        return _qwen_custom_model
-    except Exception as e:
-        _qwen_custom_available = False
-        raise RuntimeError(f"Qwen3-TTS unavailable: {e}") from e
-
-
-def _get_qwen_base():
-    global _qwen_base_model, _qwen_base_available
-    if _qwen_base_available is False:
-        raise RuntimeError("Qwen3-TTS not available")
-    if _qwen_base_model is not None:
-        return _qwen_base_model
-    try:
-        _qwen_base_model = _load_qwen_model(QWEN_BASE_MODEL)
-        _qwen_base_available = True
-        logger.info("Qwen3-TTS Base loaded (%s)", QWEN_BASE_MODEL)
-        return _qwen_base_model
-    except Exception as e:
-        _qwen_base_available = False
-        raise RuntimeError(f"Qwen3-TTS Base unavailable: {e}") from e
-
-
-def _get_voice_clone_prompt(model, ref_audio: str, ref_text: str):
-    """Return cached voice clone prompt, computing it on first call."""
-    cache_key = (ref_audio, ref_text)
-    if cache_key not in _voice_clone_prompt_cache:
-        logger.debug("Computing voice clone prompt for %s", ref_audio)
-        _voice_clone_prompt_cache[cache_key] = model.create_voice_clone_prompt(
-            ref_audio=ref_audio,
-            ref_text=ref_text,
-        )
-    return _voice_clone_prompt_cache[cache_key]
-
-
-def _synthesize_qwen_clone(text: str, ref_audio: str, ref_text: str) -> bytes:
-    import soundfile as sf
-    model = _get_qwen_base()
-    prompt = _get_voice_clone_prompt(model, ref_audio, ref_text)
-    wavs, sr = model.generate_voice_clone(
-        text=text,
-        language="Auto",
-        voice_clone_prompt=prompt,
-    )
-    buf = io.BytesIO()
-    sf.write(buf, wavs[0], sr, format="WAV", subtype="PCM_16")
-    return buf.getvalue()
-
-
-def _synthesize_qwen_custom(text: str, voice: str) -> bytes:
-    import soundfile as sf
-    resolved = voice if voice in QWEN_VOICES else QWEN_DEFAULT_VOICE
-    model = _get_qwen_custom()
-    wavs, sr = model.generate_custom_voice(
-        text=text,
-        language="Auto",
-        speaker=resolved,
-    )
-    buf = io.BytesIO()
-    sf.write(buf, wavs[0], sr, format="WAV", subtype="PCM_16")
-    return buf.getvalue()
-
-
-# ── Pocket TTS (classic CPU) ──────────────────────────────────────────────────
-
-def _get_pocket():
-    global _pocket_model, _pocket_available
-    if _pocket_available is False:
-        raise RuntimeError("Pocket TTS not available")
-    if _pocket_model is not None:
-        return _pocket_model
-    try:
-        from pocket_tts import TTSModel
-        _pocket_model = TTSModel.load_model()
-        _pocket_available = True
-        logger.info("Pocket TTS loaded successfully")
-        return _pocket_model
-    except Exception as e:
-        _pocket_available = False
-        raise RuntimeError(f"Pocket TTS unavailable: {e}") from e
-
-
-def _get_pocket_voice_state(model, voice: str):
-    global _pocket_voice_states
-    resolved = voice if voice in POCKET_VOICES else POCKET_MALE_DEFAULT
-    if resolved not in _pocket_voice_states:
-        _pocket_voice_states[resolved] = model.get_state_for_audio_prompt(resolved)
-    return _pocket_voice_states[resolved]
-
-
-def _synthesize_pocket(text: str, voice: str) -> bytes:
-    import scipy.io.wavfile
-    import numpy as np
-    model = _get_pocket()
-    voice_state = _get_pocket_voice_state(model, voice)
-    audio_tensor = model.generate_audio(voice_state, text)
-    audio_np = audio_tensor.numpy()
-    if audio_np.dtype != "int16":
-        audio_np = (audio_np * 32767).clip(-32768, 32767).astype("int16")
-    buf = io.BytesIO()
-    scipy.io.wavfile.write(buf, model.sample_rate, audio_np)
-    return buf.getvalue()
-
-
-# ── Kokoro (last resort CPU) ──────────────────────────────────────────────────
-
-def _get_kokoro():
-    global _kokoro_pipeline
-    if _kokoro_pipeline is None:
-        from kokoro import KPipeline
-        _kokoro_pipeline = KPipeline(lang_code="a")
-    return _kokoro_pipeline
-
-
-def _synthesize_kokoro(text: str, voice: str = "am_adam") -> bytes:
-    import numpy as np
-    import soundfile as sf
-    kokoro_voice = voice if voice not in POCKET_VOICES and voice not in QWEN_VOICES else "am_adam"
-    pipeline = _get_kokoro()
-    audio_chunks = []
-    for _, _, audio in pipeline(text, voice=kokoro_voice, speed=1.0):
-        if audio is not None:
-            audio_chunks.append(audio)
-    if not audio_chunks:
-        raise RuntimeError("Kokoro produced no audio")
-    samples = np.concatenate(audio_chunks)
-    buf = io.BytesIO()
-    sf.write(buf, samples, samplerate=24000, format="WAV", subtype="PCM_16")
-    return buf.getvalue()
-
-
-# ── Shared ────────────────────────────────────────────────────────────────────
-
-def _wav_to_ogg_opus(wav_bytes: bytes, speed: float = 1.0) -> bytes:
-    cmd = [FFMPEG_BIN, "-y", "-f", "wav", "-i", "pipe:0"]
-    if speed != 1.0:
-        cmd += ["-af", f"atempo={speed:.3f}"]
-    cmd += ["-c:a", "libopus", "-b:a", "32k", "-vbr", "on", "-f", "ogg", "pipe:1"]
-    proc = subprocess.run(cmd, input=wav_bytes, capture_output=True, timeout=60)
+def _convert_audio_to_ogg_opus(audio_bytes: bytes) -> bytes:
+    """Convert MP3/LINEAR16 audio bytes to WhatsApp-compatible OGG Opus."""
+    cmd = [FFMPEG_BIN, "-y", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", "-f", "ogg", "pipe:1"]
+    proc = subprocess.run(cmd, input=audio_bytes, capture_output=True, timeout=60)
     if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed: {proc.stderr.decode()[:200]}")
+        raise RuntimeError(f"ffmpeg conversion failed: {proc.stderr.decode()[:200]}")
     return proc.stdout
 
 
-def _run_synthesis(
+async def _synthesize_google_tts(
     text: str,
-    voice: str,
-    backend: str,
-    ref_audio: Optional[str],
-    ref_text: Optional[str],
+    voice_name: Optional[str] = None,
+    language_code: Optional[str] = None,
 ) -> bytes:
-    """
-    backend: "auto" | "qwen" | "classic"
-    Voice clone is attempted when ref_audio + ref_text are provided AND backend allows Qwen3.
-    """
-    use_qwen = backend == "qwen" or (backend != "classic" and _has_cuda())
+    import base64
 
-    if use_qwen:
-        # Voice clone path — requires both ref_audio and ref_text
-        if ref_audio and ref_text and os.path.isfile(ref_audio):
-            try:
-                wav = _synthesize_qwen_clone(text, ref_audio, ref_text)
-                logger.debug("Synthesized with Qwen3-TTS voice clone")
-                return _wav_to_ogg_opus(wav, speed=1.08)
-            except Exception as e:
-                logger.warning("Qwen3-TTS voice clone failed, trying preset: %s", e)
+    api_key = GOOGLE_TTS_API_KEY or os.getenv("GOOGLE_TTS_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError("Google Cloud TTS API key is not configured")
 
-        # Preset voice path
-        try:
-            wav = _synthesize_qwen_custom(text, voice)
-            logger.debug("Synthesized with Qwen3-TTS CustomVoice (voice=%s)", voice)
-            return _wav_to_ogg_opus(wav)
-        except Exception as e:
-            logger.warning("Qwen3-TTS failed, falling back to classic: %s", e)
+    target_voice = voice_name if (voice_name and "-" in voice_name) else GOOGLE_TTS_VOICE_NAME
+    if language_code:
+        target_lang = language_code
+    elif target_voice and "-" in target_voice:
+        parts = target_voice.split("-")
+        if len(parts) >= 2:
+            target_lang = f"{parts[0]}-{parts[1]}"
+        else:
+            target_lang = GOOGLE_TTS_LANGUAGE_CODE
+    else:
+        target_lang = GOOGLE_TTS_LANGUAGE_CODE
 
-    # Classic CPU fallback
-    try:
-        wav = _synthesize_pocket(text, voice)
-        logger.debug("Synthesized with Pocket TTS (voice=%s)", voice)
-        return _wav_to_ogg_opus(wav)
-    except Exception as e:
-        logger.warning("Pocket TTS failed, falling back to Kokoro: %s", e)
+    payload = {
+        "input": {"text": text},
+        "voice": {
+            "languageCode": target_lang,
+            "name": target_voice,
+        },
+        "audioConfig": {
+            "audioEncoding": "MP3",
+        },
+    }
 
-    wav = _synthesize_kokoro(text, voice=voice)
-    logger.debug("Synthesized with Kokoro (voice=%s)", voice)
-    return _wav_to_ogg_opus(wav)
+    url = f"{GOOGLE_TTS_URL}?key={api_key}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(url, json=payload)
+
+    if response.status_code != 200:
+        raise RuntimeError(f"Google TTS API error ({response.status_code}): {response.text}")
+
+    data = response.json()
+    audio_content = data.get("audioContent")
+    if not audio_content:
+        raise RuntimeError("Google TTS returned no audio content")
+
+    raw_audio = base64.b64decode(audio_content)
+
+    # Convert to OGG Opus in an executor thread
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _convert_audio_to_ogg_opus, raw_audio)
 
 
 async def synthesize(
     text: str,
-    voice: str = QWEN_DEFAULT_VOICE,
+    voice: str = GOOGLE_TTS_VOICE_NAME,
     backend: str = "auto",
     ref_audio: Optional[str] = None,
     ref_text: Optional[str] = None,
 ) -> bytes:
     """
-    Async entry point. Returns OGG Opus bytes ready for WhatsApp.
-
-    Args:
-        text      : Text to synthesize.
-        voice     : Qwen preset voice name (Ryan, Aiden, …) or Pocket voice name.
-        backend   : "auto" (GPU→Qwen, CPU→classic), "qwen" (force Qwen), "classic" (force CPU).
-        ref_audio : Path to reference .wav for voice cloning (Qwen only).
-        ref_text  : Transcript of the reference audio (required for voice cloning).
+    Synthesize text into OGG Opus bytes using Google Cloud Text-to-Speech.
     """
-    clean = _clean_for_tts(text)
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None, _run_synthesis, clean, voice, backend, ref_audio, ref_text
-    )
+    clean_text = _clean_for_tts(text)
+    if not clean_text:
+        raise ValueError("Text is empty after cleaning for TTS")
+
+    return await _synthesize_google_tts(clean_text, voice_name=voice)
 
 
 def invalidate_voice_clone_cache(ref_audio: str) -> None:
-    """Remove all cached clone prompts for a given reference audio path."""
-    keys_to_remove = [k for k in _voice_clone_prompt_cache if k[0] == ref_audio]
-    for k in keys_to_remove:
-        del _voice_clone_prompt_cache[k]
-    if keys_to_remove:
-        logger.info("Invalidated %d voice clone cache entries for %s", len(keys_to_remove), ref_audio)
+    """Legacy stub for voice clone cache invalidation."""
+    pass

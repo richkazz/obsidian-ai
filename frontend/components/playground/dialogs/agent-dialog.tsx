@@ -757,8 +757,6 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
                   ? "e.g. claude-sonnet-5"
                   : providers.find((p) => p.id === providerId)?.provider_type === "google"
                   ? "e.g. gemini-3.1-pro"
-                  : providers.find((p) => p.id === providerId)?.provider_type === "ollama"
-                  ? "e.g. llama3"
                   : providers.find((p) => p.id === providerId)?.provider_type === "openrouter"
                   ? "e.g. openai/gpt-5.5"
                   : "e.g. gpt-5.5"
