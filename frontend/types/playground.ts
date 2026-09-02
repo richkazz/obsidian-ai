@@ -857,7 +857,7 @@ export interface WAChannel {
   voice_reply_enabled: boolean
   voice_reply_jids: string[]
   voice_reply_voice: string
-  tts_backend: "auto" | "qwen" | "classic"
+  tts_backend: "auto" | "google" | "qwen" | "classic" | string
   voice_clone_audio_path: string | null
   voice_clone_ref_text: string | null
   has_voice_clone: boolean
@@ -879,7 +879,7 @@ export interface UpdateWAChannelRequest {
   voice_reply_enabled?: boolean
   voice_reply_jids?: string[]
   voice_reply_voice?: string
-  tts_backend?: "auto" | "qwen" | "classic"
+  tts_backend?: "auto" | "google" | "qwen" | "classic" | string
   voice_clone_ref_text?: string | null
 }
 
