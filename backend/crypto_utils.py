@@ -21,7 +21,8 @@ def decrypt_payload(encrypted_data: str) -> dict:
     salt = raw[8:16]
     ciphertext = raw[16:]
 
-    key, iv = _evp_bytes_to_key(ENCRYPTION_KEY.encode(), salt, 32, 16)
+    encryption_key = os.getenv("ENCRYPTION_KEY", ENCRYPTION_KEY)
+    key, iv = _evp_bytes_to_key(encryption_key.encode(), salt, 32, 16)
 
     cipher = AES.new(key, AES.MODE_CBC, iv)
     decrypted = unpad(cipher.decrypt(ciphertext), AES.block_size)
