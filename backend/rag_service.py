@@ -1,179 +1,341 @@
-"""Per-session RAG with LEANN (Linux/macOS) or FAISS (Windows) backend."""
-
+"""
+Managed RAG Service — Google Vertex/Gemini Embeddings + Qdrant Vector Database.
+Replaces local FAISS / LEANN and SentenceTransformer models.
+"""
 import io
-import json
 import os
-import sys
 import logging
-import pickle
-from typing import Optional
+import httpx
+from typing import Optional, List, Dict, Any
+import uuid
 
-import numpy as np
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as qmodels
+
+from config import (
+    QDRANT_URL,
+    QDRANT_API_KEY,
+    QDRANT_COLLECTION_NAME,
+    GOOGLE_EMBEDDING_MODEL,
+    GOOGLE_API_KEY,
+)
 
 logger = logging.getLogger(__name__)
 
-INDEX_DIR = os.path.join(os.path.dirname(__file__), "rag_indexes")
+# Google Gemini / Vertex Embeddings Endpoint (REST)
+GOOGLE_EMBEDDING_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GOOGLE_EMBEDDING_MODEL}:embedContent"
 
-USE_FAISS = sys.platform == "win32"
-
-
-# ---------------------------------------------------------------------------
-# FAISS backend helpers (Windows)
-# ---------------------------------------------------------------------------
-
-_faiss_model = None
+# Global client cache
+_qdrant_client: Optional[QdrantClient] = None
 
 
-def _get_faiss_model():
-    """Lazy-load the sentence-transformers model once."""
-    global _faiss_model
-    if _faiss_model is None:
-        from sentence_transformers import SentenceTransformer
-        _faiss_model = SentenceTransformer("all-MiniLM-L6-v2")
-    return _faiss_model
+def get_qdrant_client() -> QdrantClient:
+    global _qdrant_client
+    if _qdrant_client is None:
+        url = QDRANT_URL or os.getenv("QDRANT_URL")
+        key = QDRANT_API_KEY or os.getenv("QDRANT_API_KEY") or None
+        if not url:
+            logger.info("QDRANT_URL not set; using in-memory Qdrant client")
+            _qdrant_client = QdrantClient(location=":memory:")
+        else:
+            _qdrant_client = QdrantClient(url=url, api_key=key)
+    return _qdrant_client
 
 
-class _FaissIndex:
-    """Simple wrapper around a FAISS flat index + metadata store."""
-
-    def __init__(self):
-        self.texts: list[str] = []
-        self.metadatas: list[dict] = []
-        self.index = None  # faiss.IndexFlatIP
-
-    # -- persistence ----------------------------------------------------------
-
-    def save(self, path: str):
-        import faiss
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        faiss.write_index(self.index, path)
-        meta_path = path + ".meta"
-        with open(meta_path, "wb") as f:
-            pickle.dump({"texts": self.texts, "metadatas": self.metadatas}, f)
-
-    @classmethod
-    def load(cls, path: str) -> "_FaissIndex":
-        import faiss
-        obj = cls()
-        obj.index = faiss.read_index(path)
-        meta_path = path + ".meta"
-        with open(meta_path, "rb") as f:
-            data = pickle.load(f)
-        obj.texts = data["texts"]
-        obj.metadatas = data["metadatas"]
-        return obj
-
-    # -- operations -----------------------------------------------------------
-
-    def add(self, texts: list[str], metadatas: list[dict]):
-        import faiss
-        model = _get_faiss_model()
-        embeddings = model.encode(texts, normalize_embeddings=True)
-        embeddings = np.asarray(embeddings, dtype="float32")
-
-        if self.index is None:
-            dim = embeddings.shape[1]
-            self.index = faiss.IndexFlatIP(dim)
-
-        self.index.add(embeddings)
-        self.texts.extend(texts)
-        self.metadatas.extend(metadatas)
-
-    def search(self, query: str, top_k: int = 5) -> list[dict]:
-        if self.index is None or self.index.ntotal == 0:
-            return []
-        model = _get_faiss_model()
-        q_emb = model.encode([query], normalize_embeddings=True)
-        q_emb = np.asarray(q_emb, dtype="float32")
-        scores, indices = self.index.search(q_emb, min(top_k, self.index.ntotal))
-        results = []
-        for score, idx in zip(scores[0], indices[0]):
-            if idx == -1:
-                continue
-            results.append({
-                "text": self.texts[idx],
-                "score": float(score),
-                "metadata": self.metadatas[idx],
-            })
-        return results
+def _ensure_collection_exists(vector_size: int = 768):
+    client = get_qdrant_client()
+    collection_name = QDRANT_COLLECTION_NAME
+    try:
+        collections = [c.name for c in client.get_collections().collections]
+        if collection_name not in collections:
+            logger.info("Creating Qdrant collection: %s (size=%d)", collection_name, vector_size)
+            client.create_collection(
+                collection_name=collection_name,
+                vectors_config=qmodels.VectorParams(
+                    size=vector_size,
+                    distance=qmodels.Distance.COSINE,
+                ),
+            )
+    except Exception as e:
+        logger.warning("Error checking/creating Qdrant collection %s: %s", collection_name, e)
 
 
-# ---------------------------------------------------------------------------
-# RAGService
-# ---------------------------------------------------------------------------
+async def get_google_embedding(text: str) -> List[float]:
+    """Generate embedding vector for text using Google Gemini/Vertex API."""
+    api_key = GOOGLE_API_KEY or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError("GOOGLE_API_KEY is not configured for embeddings")
+
+    url = f"{GOOGLE_EMBEDDING_API_URL}?key={api_key}"
+    payload = {
+        "model": f"models/{GOOGLE_EMBEDDING_MODEL}",
+        "content": {
+            "parts": [{"text": text}]
+        }
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(url, json=payload)
+
+    if response.status_code != 200:
+        raise RuntimeError(f"Google Embedding API error ({response.status_code}): {response.text}")
+
+    data = response.json()
+    embedding_values = data.get("embedding", {}).get("values")
+    if not embedding_values:
+        raise RuntimeError("Google Embedding API returned empty vector")
+
+    return embedding_values
+
+
+def _run_coroutine_sync(coro):
+    """Safely execute a coroutine from both sync and async contexts."""
+    import asyncio
+    import concurrent.futures
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(lambda: asyncio.run(coro))
+            return future.result()
+    else:
+        return asyncio.run(coro)
 
 
 class RAGService:
 
     @staticmethod
-    def _index_path(session_id: str) -> str:
-        os.makedirs(INDEX_DIR, exist_ok=True)
-        ext = ".faiss" if USE_FAISS else ".leann"
-        return os.path.join(INDEX_DIR, f"session_{session_id}{ext}")
+    def has_index(session_id: str) -> bool:
+        client = get_qdrant_client()
+        try:
+            results = client.scroll(
+                collection_name=QDRANT_COLLECTION_NAME,
+                scroll_filter=qmodels.Filter(
+                    must=[
+                        qmodels.FieldCondition(
+                            key="session_id",
+                            match=qmodels.MatchValue(value=session_id),
+                        )
+                    ]
+                ),
+                limit=1,
+            )
+            return len(results[0]) > 0
+        except Exception:
+            return False
 
     @staticmethod
-    def has_index(session_id: str) -> bool:
-        return os.path.exists(RAGService._index_path(session_id))
+    async def index_document_async(session_id: str, text: str, metadata: dict):
+        """Chunk text, generate Google embeddings, and upsert to Qdrant."""
+        chunks = RAGService._chunk_text(text, chunk_size=500, overlap=50)
+        if not chunks:
+            return
 
-    # -- indexing -------------------------------------------------------------
+        sample_vec = await get_google_embedding(chunks[0])
+        _ensure_collection_exists(len(sample_vec))
+
+        client = get_qdrant_client()
+        points = []
+
+        vectors = [sample_vec]
+        for c in chunks[1:]:
+            vec = await get_google_embedding(c)
+            vectors.append(vec)
+
+        for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
+            point_id = str(uuid.uuid4())
+            payload = {
+                **metadata,
+                "session_id": session_id,
+                "text": chunk,
+                "chunk_index": i,
+                "type": "session_doc",
+            }
+            points.append(qmodels.PointStruct(
+                id=point_id,
+                vector=vec,
+                payload=payload,
+            ))
+
+        client.upsert(
+            collection_name=QDRANT_COLLECTION_NAME,
+            points=points,
+        )
 
     @staticmethod
     def index_document(session_id: str, text: str, metadata: dict):
-        """Chunk text and add to the session's vector index."""
-        path = RAGService._index_path(session_id)
-        chunks = RAGService._chunk_text(text, chunk_size=500, overlap=50)
-
-        if USE_FAISS:
-            if os.path.exists(path):
-                idx = _FaissIndex.load(path)
-            else:
-                idx = _FaissIndex()
-            chunk_metas = [{**metadata, "chunk_index": i} for i, _ in enumerate(chunks)]
-            idx.add(chunks, chunk_metas)
-            idx.save(path)
-        else:
-            from leann.api import LeannBuilder
-            builder = LeannBuilder(backend_name="hnsw")
-            for i, chunk in enumerate(chunks):
-                chunk_meta = {**metadata, "chunk_index": i}
-                builder.add_text(chunk, metadata=chunk_meta)
-            if os.path.exists(path):
-                builder.update_index(path)
-            else:
-                builder.build_index(path)
-
-    # -- search ---------------------------------------------------------------
+        """Synchronous wrapper for index_document_async."""
+        _run_coroutine_sync(RAGService.index_document_async(session_id, text, metadata))
 
     @staticmethod
-    def search(session_id: str, query: str, top_k: int = 5) -> list[dict]:
-        """Search the session's vector index."""
-        path = RAGService._index_path(session_id)
-        if not os.path.exists(path):
-            return []
-
+    async def search_async(session_id: str, query: str, top_k: int = 5) -> List[dict]:
+        """Search vectors in Qdrant for a given session."""
         try:
-            if USE_FAISS:
-                idx = _FaissIndex.load(path)
-                return idx.search(query, top_k=top_k)
-            else:
-                from leann.api import LeannSearcher
-                searcher = LeannSearcher(path)
-                results = searcher.search(query, top_k=top_k)
-                out = [
-                    {"text": r.text, "score": r.score, "metadata": r.metadata}
-                    for r in results
-                ]
-                searcher.cleanup()
-                return out
+            query_vector = await get_google_embedding(query)
+            client = get_qdrant_client()
+
+            search_result = client.search(
+                collection_name=QDRANT_COLLECTION_NAME,
+                query_vector=query_vector,
+                query_filter=qmodels.Filter(
+                    must=[
+                        qmodels.FieldCondition(
+                            key="session_id",
+                            match=qmodels.MatchValue(value=session_id),
+                        )
+                    ]
+                ),
+                limit=top_k,
+            )
+
+            results = []
+            for hit in search_result:
+                payload = hit.payload or {}
+                results.append({
+                    "text": payload.get("text", ""),
+                    "score": float(hit.score),
+                    "metadata": payload,
+                })
+            return results
         except Exception as e:
-            logger.warning(f"RAG search failed for session {session_id}: {e}")
+            logger.warning("RAG search failed for session %s: %s", session_id, e)
             return []
 
-    # -- text extraction ------------------------------------------------------
+    @staticmethod
+    def search(session_id: str, query: str, top_k: int = 5) -> List[dict]:
+        """Synchronous wrapper for search_async."""
+        return _run_coroutine_sync(RAGService.search_async(session_id, query, top_k))
+
+    # -- Knowledge Base RAG ---------------------------------------------------
+
+    @staticmethod
+    def has_kb_index(kb_id: str) -> bool:
+        client = get_qdrant_client()
+        try:
+            results = client.scroll(
+                collection_name=QDRANT_COLLECTION_NAME,
+                scroll_filter=qmodels.Filter(
+                    must=[
+                        qmodels.FieldCondition(
+                            key="kb_id",
+                            match=qmodels.MatchValue(value=kb_id),
+                        )
+                    ]
+                ),
+                limit=1,
+            )
+            return len(results[0]) > 0
+        except Exception:
+            return False
+
+    @staticmethod
+    async def index_kb_document_async(kb_id: str, text: str, metadata: dict):
+        chunks = RAGService._chunk_text(text, chunk_size=500, overlap=50)
+        if not chunks:
+            return
+
+        sample_vec = await get_google_embedding(chunks[0])
+        _ensure_collection_exists(len(sample_vec))
+
+        client = get_qdrant_client()
+        points = []
+
+        vectors = [sample_vec]
+        for c in chunks[1:]:
+            vec = await get_google_embedding(c)
+            vectors.append(vec)
+
+        for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
+            point_id = str(uuid.uuid4())
+            payload = {
+                **metadata,
+                "kb_id": kb_id,
+                "text": chunk,
+                "chunk_index": i,
+                "type": "kb_doc",
+            }
+            points.append(qmodels.PointStruct(
+                id=point_id,
+                vector=vec,
+                payload=payload,
+            ))
+
+        client.upsert(
+            collection_name=QDRANT_COLLECTION_NAME,
+            points=points,
+        )
+
+    @staticmethod
+    def index_kb_document(kb_id: str, text: str, metadata: dict):
+        """Synchronous wrapper for index_kb_document_async."""
+        _run_coroutine_sync(RAGService.index_kb_document_async(kb_id, text, metadata))
+
+    @staticmethod
+    async def search_kb_async(kb_id: str, query: str, top_k: int = 5) -> List[dict]:
+        try:
+            query_vector = await get_google_embedding(query)
+            client = get_qdrant_client()
+
+            search_result = client.search(
+                collection_name=QDRANT_COLLECTION_NAME,
+                query_vector=query_vector,
+                query_filter=qmodels.Filter(
+                    must=[
+                        qmodels.FieldCondition(
+                            key="kb_id",
+                            match=qmodels.MatchValue(value=kb_id),
+                        )
+                    ]
+                ),
+                limit=top_k,
+            )
+
+            results = []
+            for hit in search_result:
+                payload = hit.payload or {}
+                results.append({
+                    "text": payload.get("text", ""),
+                    "score": float(hit.score),
+                    "metadata": payload,
+                })
+            return results
+        except Exception as e:
+            logger.warning("KB RAG search failed for kb %s: %s", kb_id, e)
+            return []
+
+    @staticmethod
+    def search_kb(kb_id: str, query: str, top_k: int = 5) -> List[dict]:
+        """Synchronous wrapper for search_kb_async."""
+        return _run_coroutine_sync(RAGService.search_kb_async(kb_id, query, top_k))
+
+    @staticmethod
+    def delete_kb_index(kb_id: str):
+        """Delete all points associated with a knowledge base."""
+        client = get_qdrant_client()
+        try:
+            client.delete(
+                collection_name=QDRANT_COLLECTION_NAME,
+                points_selector=qmodels.FilterSelector(
+                    filter=qmodels.Filter(
+                        must=[
+                            qmodels.FieldCondition(
+                                key="kb_id",
+                                match=qmodels.MatchValue(value=kb_id),
+                            )
+                        ]
+                    )
+                )
+            )
+        except Exception as e:
+            logger.warning("Failed to delete Qdrant points for kb %s: %s", kb_id, e)
+
+    # -- Extract text helpers -------------------------------------------------
 
     @staticmethod
     def extract_text(file_bytes: bytes, filename: str, media_type: str) -> str:
-        """Extract plain text from a document file."""
         lower = filename.lower()
 
         if media_type == "text/plain" or lower.endswith(".txt"):
@@ -203,85 +365,8 @@ class RAGService:
 
         return ""
 
-    # -- knowledge base (persistent, agent-scoped) ----------------------------
-
     @staticmethod
-    def _kb_index_path(kb_id: str) -> str:
-        os.makedirs(INDEX_DIR, exist_ok=True)
-        ext = ".faiss" if USE_FAISS else ".leann"
-        return os.path.join(INDEX_DIR, f"kb_{kb_id}{ext}")
-
-    @staticmethod
-    def has_kb_index(kb_id: str) -> bool:
-        return os.path.exists(RAGService._kb_index_path(kb_id))
-
-    @staticmethod
-    def index_kb_document(kb_id: str, text: str, metadata: dict):
-        """Chunk text and add to the knowledge base's persistent vector index."""
-        path = RAGService._kb_index_path(kb_id)
-        chunks = RAGService._chunk_text(text, chunk_size=500, overlap=50)
-        if not chunks:
-            return
-
-        if USE_FAISS:
-            if os.path.exists(path):
-                idx = _FaissIndex.load(path)
-            else:
-                idx = _FaissIndex()
-            chunk_metas = [{**metadata, "chunk_index": i} for i, _ in enumerate(chunks)]
-            idx.add(chunks, chunk_metas)
-            idx.save(path)
-        else:
-            from leann.api import LeannBuilder
-            builder = LeannBuilder(backend_name="hnsw")
-            for i, chunk in enumerate(chunks):
-                chunk_meta = {**metadata, "chunk_index": i}
-                builder.add_text(chunk, metadata=chunk_meta)
-            if os.path.exists(path):
-                builder.update_index(path)
-            else:
-                builder.build_index(path)
-
-    @staticmethod
-    def search_kb(kb_id: str, query: str, top_k: int = 5) -> list[dict]:
-        """Search a knowledge base's vector index."""
-        path = RAGService._kb_index_path(kb_id)
-        if not os.path.exists(path):
-            return []
-
-        try:
-            if USE_FAISS:
-                idx = _FaissIndex.load(path)
-                return idx.search(query, top_k=top_k)
-            else:
-                from leann.api import LeannSearcher
-                searcher = LeannSearcher(path)
-                results = searcher.search(query, top_k=top_k)
-                out = [
-                    {"text": r.text, "score": r.score, "metadata": r.metadata}
-                    for r in results
-                ]
-                searcher.cleanup()
-                return out
-        except Exception as e:
-            logger.warning(f"KB RAG search failed for kb {kb_id}: {e}")
-            return []
-
-    @staticmethod
-    def delete_kb_index(kb_id: str):
-        """Remove all index files for a knowledge base."""
-        path = RAGService._kb_index_path(kb_id)
-        if os.path.exists(path):
-            os.remove(path)
-        meta_path = path + ".meta"
-        if os.path.exists(meta_path):
-            os.remove(meta_path)
-
-    # -- helpers --------------------------------------------------------------
-
-    @staticmethod
-    def _chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
-        """Split text into overlapping chunks."""
+    def _chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
         if not text.strip():
             return []
         chunks = []

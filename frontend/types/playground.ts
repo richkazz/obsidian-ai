@@ -1,7 +1,7 @@
 export interface LLMProvider {
   id: string
   name: string
-  provider_type: "openai" | "anthropic" | "google" | "ollama" | "openrouter" | "custom"
+  provider_type: "openai" | "anthropic" | "google" | "openrouter" | "custom"
   base_url?: string
   model_id?: string
   is_active: boolean

@@ -4,7 +4,7 @@
 
 ### Open-Source AI Agent Management & Orchestration Platform
 
-Build, deploy, and orchestrate AI agents, multi-agent teams, and automated workflows - all from one unified control plane. Supports OpenAI, Anthropic, Google Gemini, Ollama, OpenRouter, and any OpenAI-compatible endpoint.
+Build, deploy, and orchestrate AI agents, multi-agent teams, and automated workflows - all from one unified control plane. Supports OpenAI, Anthropic, Google Gemini, OpenRouter, and any OpenAI-compatible endpoint.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/sup3rus3r/obsidian-ai?style=social)](https://github.com/sup3rus3r/obsidian-ai/stargazers)
@@ -84,7 +84,7 @@ Build, deploy, and orchestrate AI agents, multi-agent teams, and automated workf
 
 Most AI agent frameworks are code-only libraries that require deep programming knowledge. **Obsidian AI** provides a complete visual interface for building, managing, and running AI agents - no SDK glue code required.
 
-- **No vendor lock-in** - Swap between OpenAI, Anthropic, Google, Ollama, or any OpenAI-compatible provider without changing a single line of agent configuration.
+- **No vendor lock-in** - Swap between OpenAI, Anthropic, Google, or any OpenAI-compatible provider without changing a single line of agent configuration.
 - **Visual orchestration** - Create multi-agent teams, sequential pipelines, and parallel DAG workflows from a drag-and-drop canvas. No YAML, no code, no boilerplate.
 - **Production-ready security** - JWT auth, TOTP 2FA, AES end-to-end encryption, Fernet secrets vault, role-based access control, and rate limiting out of the box.
 - **Self-hosted & open-source** - Run entirely on your own infrastructure. Your data never leaves your servers.
@@ -103,7 +103,6 @@ Connect to any major LLM provider from a single interface. Add providers with en
 | **OpenAI** | GPT-5.5, GPT-4.1, GPT-4.1 mini, GPT-4.1 nano, o3, o4-mini | Cloud |
 | **Anthropic** | Claude Fable 5, Claude Opus 4.8/4.7, Claude Sonnet 5, Claude Haiku 4.5 | Cloud |
 | **Google** | Gemini 3.1 Pro, Gemini 3.7/3.6 Flash, Gemini 3.5 Flash Lite, Gemini 2.5 Pro/Flash | Cloud |
-| **Ollama** | Llama, Mistral, Qwen, Phi, DeepSeek - any local model | Local |
 | **OpenRouter** | Access 100+ models through one API key | Cloud |
 | **Custom** | Any OpenAI-compatible endpoint (xAI Grok, LM Studio, vLLM, etc.) | Self-hosted |
 
@@ -378,11 +377,8 @@ Connect any agent to a WhatsApp account via QR code scan. No Meta Business accou
 - **Per-channel agent** - Route all messages on a channel to a specific agent; change the agent at any time without re-scanning
 - **Contact whitelist** - Restrict which contacts the agent responds to; others receive a custom rejection message or are silently ignored
 - **Session continuity** - Each `(channel, contact)` pair maps to a persistent session; the agent remembers conversation history and applies long-term memory
-- **Voice note transcription** - Incoming voice notes are transcribed locally using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CPU, no cloud STT)
-- **Voice note replies** - Reply with synthesised audio using the multi-backend TTS pipeline (see [Voice Reply Setup](#voice-reply-setup-optional)):
-  - **Qwen3-TTS** (GPU): 9 preset voices across English, Chinese, Japanese, Korean; or reply in the user's own cloned voice
-  - **Pocket TTS** (CPU fallback): 8 voices, CPU-native
-  - **Kokoro** (last resort): lightweight CPU fallback
+- **Voice note transcription** - Incoming voice notes are transcribed using Groq Whisper API (`whisper-large-v3-turbo`).
+- **Voice note replies** - Reply with synthesised audio using Google Cloud Text-to-Speech API normalized to WhatsApp OGG Opus via `ffmpeg`.
 - **Voice cloning** - Record or upload a voice sample in the channel settings page; the agent replies in the user's voice. Includes a guided in-browser recorder with a phonetically rich script
 - **Per-channel TTS engine** - Choose `auto`, `qwen`, or `classic` per channel
 - **HITL in channels** - Pending approvals surface in the global notification badge in the top bar

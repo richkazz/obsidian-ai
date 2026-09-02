@@ -47,27 +47,13 @@ import { toast } from "sonner"
 
 // ── Voice options ─────────────────────────────────────────────────────────────
 
-const QWEN_VOICES = [
-  { value: "Ryan",     label: "Ryan — Dynamic male (English)",        lang: "en" },
-  { value: "Aiden",    label: "Aiden — Sunny American male (English)", lang: "en" },
-  { value: "Vivian",   label: "Vivian — Bright young female (Chinese)", lang: "zh" },
-  { value: "Serena",   label: "Serena — Warm gentle female (Chinese)", lang: "zh" },
-  { value: "Uncle_Fu", label: "Uncle Fu — Low mellow male (Chinese)",  lang: "zh" },
-  { value: "Dylan",    label: "Dylan — Natural male (Chinese)",         lang: "zh" },
-  { value: "Eric",     label: "Eric — Husky male (Chinese)",            lang: "zh" },
-  { value: "Ono_Anna", label: "Ono Anna — Playful female (Japanese)",   lang: "ja" },
-  { value: "Sohee",   label: "Sohee — Warm female (Korean)",           lang: "ko" },
-]
-
-const CLASSIC_VOICES = [
-  { value: "marius",  label: "Marius (Male)" },
-  { value: "javert",  label: "Javert (Male)" },
-  { value: "jean",    label: "Jean (Male)" },
-  { value: "alba",    label: "Alba (Female)" },
-  { value: "fantine", label: "Fantine (Female)" },
-  { value: "cosette", label: "Cosette (Female)" },
-  { value: "eponine", label: "Eponine (Female)" },
-  { value: "azelma",  label: "Azelma (Female)" },
+const GOOGLE_TTS_VOICES = [
+  { value: "en-US-Journey-F", label: "Journey Female (English - US)" },
+  { value: "en-US-Journey-D", label: "Journey Male (English - US)" },
+  { value: "en-US-Neural2-F", label: "Neural Female (English - US)" },
+  { value: "en-US-Neural2-J", label: "Neural Male (English - US)" },
+  { value: "en-GB-Neural2-A", label: "Neural Female (English - UK)" },
+  { value: "en-GB-Neural2-B", label: "Neural Male (English - UK)" },
 ]
 
 // Fallback script used while the agent-generated one loads
@@ -367,8 +353,8 @@ export default function ChannelDetailPage() {
   const [voiceReplyEnabled, setVoiceReplyEnabled] = useState(false)
   const [voiceReplyJids, setVoiceReplyJids] = useState<string[]>([])
   const [voiceReplyAllContacts, setVoiceReplyAllContacts] = useState(true)
-  const [voiceReplyVoice, setVoiceReplyVoice] = useState("Ryan")
-  const [ttsBackend, setTtsBackend] = useState<"auto" | "qwen" | "classic">("auto")
+  const [voiceReplyVoice, setVoiceReplyVoice] = useState("en-US-Journey-F")
+  const [ttsBackend, setTtsBackend] = useState<string>("google")
   const [newVoiceJid, setNewVoiceJid] = useState("")
 
   // Voice clone dialog
@@ -551,7 +537,7 @@ export default function ChannelDetailPage() {
 
   const removeVoiceJid = (jid: string) => setVoiceReplyJids((prev) => prev.filter((j) => j !== jid))
 
-  const voiceOptions = ttsBackend === "classic" ? CLASSIC_VOICES : QWEN_VOICES
+  const voiceOptions = GOOGLE_TTS_VOICES
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-full">

@@ -27,7 +27,6 @@ import { Loader2, CheckCircle2, XCircle, KeyRound, Lock } from "lucide-react"
 import type { LLMProvider, Secret } from "@/types/playground"
 
 const PROVIDER_TYPES = [
-  { value: "ollama", label: "Ollama (Local)", defaultUrl: "http://localhost:11434", needsKey: false },
   { value: "openai", label: "OpenAI", defaultUrl: "", needsKey: true },
   { value: "anthropic", label: "Anthropic", defaultUrl: "", needsKey: true },
   { value: "google", label: "Google Gemini", defaultUrl: "", needsKey: true },
@@ -215,7 +214,7 @@ export function ProviderDialog({ open, onOpenChange, provider, onUpdated }: Prov
             />
           </div>
 
-          {(providerType === "ollama" || providerType === "custom" || providerType === "openrouter") && (
+          {(providerType === "custom" || providerType === "openrouter") && (
             <div className="grid gap-2">
               <Label htmlFor="base-url">Base URL</Label>
               <Input

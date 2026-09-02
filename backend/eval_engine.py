@@ -253,7 +253,6 @@ async def run_eval_suite_mongo(
             "openai": "gpt-4o",
             "anthropic": "claude-sonnet-4-6",
             "google": "gemini-2.0-flash",
-            "ollama": "llama3",
             "openrouter": "openai/gpt-4o",
         }
 

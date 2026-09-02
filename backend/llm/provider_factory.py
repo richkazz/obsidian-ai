@@ -15,13 +15,11 @@ def create_provider_from_config(
     from .openai_provider import OpenAIProvider
     from .anthropic_provider import AnthropicProvider
     from .google_provider import GoogleProvider
-    from .ollama_provider import OllamaProvider
 
     PROVIDER_MAP = {
         "openai": OpenAIProvider,
         "anthropic": AnthropicProvider,
         "google": GoogleProvider,
-        "ollama": OllamaProvider,
         "openrouter": OpenAIProvider,
         "custom": OpenAIProvider,
     }
