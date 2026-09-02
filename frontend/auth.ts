@@ -27,7 +27,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
           const encryptedData = encryptPayload(payload);
 
-          const res = await fetch("http://localhost:8001/auth/login", {
+          const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8001";
+          const res = await fetch(`${backendUrl}/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ encrypted: encryptedData }),
