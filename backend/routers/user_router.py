@@ -44,15 +44,9 @@ def get_password_hash(password: str) -> str:
 
 @router.get("/health")
 @limiter.limit("60/minute")
-async def health_check(
-    request: Request,
-    auth: TokenData | APIClientData = Depends(get_current_user_or_api_client),
-):
-    return {
-        "status": "ok",
-        "authenticated_as": auth.username if isinstance(auth, TokenData) else auth.client_name,
-        "auth_type": auth.token_type,
-    }
+async def health_check(request: Request):
+    """Liveness endpoint intentionally available without authentication."""
+    return {"status": "ok"}
 
 
 @router.get("/get_user_details", response_model=UserDetailsResponse)
