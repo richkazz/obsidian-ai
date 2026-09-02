@@ -1,0 +1,119 @@
+name: obsidian-ai
+
+services:
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-obsidian}/obsidian-ai-backend:${IMAGE_TAG:-latest}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: obsidian-backend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - PROVIDER_KEY_SECRET=${PROVIDER_KEY_SECRET}
+      - DATABASE_TYPE=${DATABASE_TYPE:-sqlite}
+      - MONGODB_URL=${MONGODB_URL:-mongodb://mongo:27017/obsidian}
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-obsidian}
+      - RATE_LIMIT_USER=${RATE_LIMIT_USER:-60}
+      - RATE_LIMIT_API_CLIENT=${RATE_LIMIT_API_CLIENT:-100}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - WA_BRIDGE_URL=http://wa-bridge:3200
+      - QWEN_TTS_SIZE=${QWEN_TTS_SIZE:-0.6B}
+      - QWEN_TTS_DEVICE=${QWEN_TTS_DEVICE:-cuda:0}
+      - VOICE_SAMPLES_DIR=voice_samples
+    volumes:
+      - backend_data:/app/data
+      - backend_uploads:/app/uploads
+      - backend_voice_samples:/app/voice_samples
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - obsidian-network
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-obsidian}/obsidian-ai-frontend:${IMAGE_TAG:-latest}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: obsidian-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=${AUTH_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - BACKEND_URL=http://backend:8001
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8001}
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - obsidian-network
+
+  wa-bridge:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-obsidian}/obsidian-ai-wa-bridge:${IMAGE_TAG:-latest}
+    build:
+      context: ./wa-bridge
+      dockerfile: Dockerfile
+    container_name: obsidian-wa-bridge
+    restart: unless-stopped
+    ports:
+      - "3200:3200"
+    environment:
+      - WA_BRIDGE_PORT=3200
+      - FASTAPI_URL=http://backend:8001
+      - WA_AUTH_DIR=/app/auth
+      - WA_SIDECAR_SECRET=${WA_SIDECAR_SECRET:-}
+    volumes:
+      - wa_auth_data:/app/auth
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - obsidian-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: obsidian-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - obsidian-network
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: obsidian-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
+    depends_on:
+      - nginx
+    networks:
+      - obsidian-network
+
+networks:
+  obsidian-network:
+    driver: bridge
+
+volumes:
+  backend_data:
+  backend_uploads:
+  backend_voice_samples:
+  wa_auth_data:
+  nginx_logs:

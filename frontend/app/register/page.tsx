@@ -23,7 +23,8 @@ export default function RegisterPage() {
     try {
       const encryptedData = encryptPayload({ username, email, password });
 
-      const res = await fetch("http://localhost:8001/auth/register", {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8001";
+      const res = await fetch(`${backendUrl}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ encrypted: encryptedData }),
