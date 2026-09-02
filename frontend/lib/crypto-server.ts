@@ -1,15 +1,15 @@
 import crypto from "crypto";
 
-const ENCRYPTION_KEY = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || "";
-
 export function encryptPayload(data: object): string {
   const jsonString = JSON.stringify(data);
+  const encryptionKey =
+    process.env.ENCRYPTION_KEY || process.env.NEXT_PUBLIC_ENCRYPTION_KEY || "";
 
   // Generate random salt (8 bytes)
   const salt = crypto.randomBytes(8);
 
   // Derive key and IV using OpenSSL EVP_BytesToKey (MD5-based)
-  const { key, iv } = evpBytesToKey(ENCRYPTION_KEY, salt, 32, 16);
+  const { key, iv } = evpBytesToKey(encryptionKey, salt, 32, 16);
 
   // Encrypt with AES-256-CBC
   const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);

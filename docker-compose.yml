@@ -57,6 +57,7 @@ services:
       - NODE_ENV=production
       - AUTH_SECRET=${AUTH_SECRET}
       - AUTH_URL=${AUTH_URL:-http://localhost:3000}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - NEXT_PUBLIC_ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - BACKEND_URL=http://backend:8001
       - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8001}
