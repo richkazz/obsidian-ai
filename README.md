@@ -822,7 +822,7 @@ DATABASE_TYPE=sqlite
 TAVILY_API_KEY=tvly-...
 
 # WhatsApp bridge URL (default: http://localhost:3200)
-WA_BRIDGE_URL=http://localhost:3200
+WA_SIDECAR_URL=http://localhost:3200
 
 # TTS - Qwen3-TTS settings (GPU only; ignored if qwen-tts not installed)
 QWEN_TTS_SIZE=0.6B          # or 1.7B for higher quality

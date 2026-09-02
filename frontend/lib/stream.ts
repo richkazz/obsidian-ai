@@ -1,8 +1,10 @@
 import type { Message, ToolCall, ReasoningStep, AgentStep, ToolRound, FileAttachment, WorkflowStepResult, FileNode, HITLApprovalEvent, ToolProposalEvent, ArtifactEvent, NodeStartEvent, NodeCompleteEvent, NodeErrorEvent, NodeContentDeltaEvent } from "@/types/playground"
 
-// Stream directly to the backend, bypassing the Next.js rewrite proxy
-// which buffers the entire SSE response instead of streaming it through.
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8001"
+// Use the browser's current origin by default. In a deployed Compose stack,
+// `localhost` means the visitor's machine, not the backend container; using it
+// here prevents chat requests from ever reaching the agent. Nginx proxies the
+// same-origin /chat and /workflows SSE endpoints without buffering.
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || ""
 
 export interface KBContextEvent {
   kbs: { id: string; name: string }[]
@@ -64,15 +66,23 @@ export async function streamChat(
     }))
   }
 
-  const response = await fetch(`${BACKEND_URL}/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(body),
-    signal,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${BACKEND_URL}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(body),
+      signal,
+    })
+  } catch (error) {
+    if ((error as Error).name !== "AbortError") {
+      onError("Unable to reach the agent service. Please try again.")
+    }
+    return
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
@@ -243,15 +253,23 @@ export async function streamWorkflow(
   onNodeComplete?: (event: NodeCompleteEvent) => void,
   onNodeError?: (event: NodeErrorEvent) => void,
 ): Promise<void> {
-  const response = await fetch(`${BACKEND_URL}/workflows/${workflowId}/run`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({ input }),
-    signal,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${BACKEND_URL}/workflows/${workflowId}/run`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ input }),
+      signal,
+    })
+  } catch (error) {
+    if ((error as Error).name !== "AbortError") {
+      onWorkflowError("", "Unable to reach the workflow service. Please try again.")
+    }
+    return
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))

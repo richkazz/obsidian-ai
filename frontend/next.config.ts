@@ -15,6 +15,15 @@ const nextConfig: NextConfig = {
         source      : "/api/auth/:path*",
         destination : "/api/auth/:path*",
       },
+      // Local development does not have nginx's direct SSE proxy routes.
+      {
+        source      : "/chat",
+        destination : `${backendUrl}/chat`,
+      },
+      {
+        source      : "/workflows/:path*",
+        destination : `${backendUrl}/workflows/:path*`,
+      },
       // Exclude file-based API routes that need proper streaming
       {
         source      : "/api/wa/channels/:id/qr",
