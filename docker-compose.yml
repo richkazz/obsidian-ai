@@ -17,8 +17,14 @@ services:
       - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - PROVIDER_KEY_SECRET=${PROVIDER_KEY_SECRET:?Set PROVIDER_KEY_SECRET in the root .env file}
       - DATABASE_TYPE=${DATABASE_TYPE:-sqlite}
-      - MONGODB_URL=${MONGODB_URL:-mongodb://mongo:27017/obsidian}
-      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-obsidian}
+      # SQLite and APScheduler state must live below /app/data, which is backed
+      # by the backend_data named volume declared below.
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/app.db}
+      - SCHEDULER_DATABASE_URL=${SCHEDULER_DATABASE_URL:-sqlite:////app/data/agent_control_plane.db}
+      # These names match database_mongo.py. They are used only when
+      # DATABASE_TYPE=mongo; provide a persistent external MongoDB instance.
+      - MONGO_URL=${MONGO_URL:-mongodb://mongo:27017/obsidian}
+      - MONGO_DB_NAME=${MONGO_DB_NAME:-obsidian}
       - RATE_LIMIT_USER=${RATE_LIMIT_USER:-60}
       - RATE_LIMIT_API_CLIENT=${RATE_LIMIT_API_CLIENT:-100}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}

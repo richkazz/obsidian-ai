@@ -1,7 +1,11 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"
+# The compose deployment sets this to a database file under /app/data, which is
+# a named Docker volume.  Keep the relative-path fallback for local development.
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}

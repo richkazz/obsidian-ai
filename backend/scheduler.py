@@ -19,7 +19,9 @@ scheduler = AsyncIOScheduler(
 def configure_scheduler():
     """Attach the appropriate jobstore based on DATABASE_TYPE env var."""
     DATABASE_TYPE = os.getenv("DATABASE_TYPE", "sqlite")
-    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./agent_control_plane.db")
+    # Keep APScheduler's metadata separate from application data. In Docker the
+    # configured path is under the persistent /app/data volume.
+    DATABASE_URL = os.getenv("SCHEDULER_DATABASE_URL", "sqlite:///./agent_control_plane.db")
 
     if DATABASE_TYPE == "mongo":
         from apscheduler.jobstores.mongodb import MongoDBJobStore

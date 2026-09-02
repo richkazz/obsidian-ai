@@ -817,6 +817,16 @@ RATE_LIMIT_API_CLIENT=100
 # Database type: "sqlite" (default) or "mongo"
 DATABASE_TYPE=sqlite
 
+# Docker Compose stores these files in its persistent backend_data volume. Do
+# not point them at /app or another container-only path, or deployments will
+# start with an empty database and scheduler state.
+DATABASE_URL=sqlite:////app/data/app.db
+SCHEDULER_DATABASE_URL=sqlite:////app/data/agent_control_plane.db
+
+# MongoDB mode uses an externally managed, persistent MongoDB deployment.
+MONGO_URL=mongodb://mongo:27017/obsidian
+MONGO_DB_NAME=obsidian
+
 # Tavily Search API key - required for the web_search agent tool
 # Get a free key (1000 searches/month) at https://app.tavily.com
 TAVILY_API_KEY=tvly-...
