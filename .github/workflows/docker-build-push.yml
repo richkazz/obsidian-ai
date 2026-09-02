@@ -1,5 +1,4 @@
 name: Build and Push Docker Images to GHCR
-
 on:
   push:
     branches:
@@ -35,7 +34,6 @@ jobs:
             context: ./wa-bridge
             dockerfile: ./wa-bridge/Dockerfile
             image_suffix: wa-bridge
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -71,3 +69,48 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to VM
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # Only deploy on a real push to main/master (not on PRs, and not on tag
+    # pushes, since "git pull" tracks a branch, not a tag), or when you
+    # manually trigger the workflow via workflow_dispatch.
+    if: >
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_ACTOR: ${{ github.actor }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: GHCR_TOKEN,GHCR_ACTOR,REPO_OWNER
+          script: |
+            set -e
+
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            # Log in to GHCR so `docker compose pull` can fetch the images
+            # that were just pushed (needed if the packages are private).
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
+
+            # Pull the latest code (compose file, nginx config, etc.)
+            git pull origin ${{ github.ref_name }}
+
+            # Make sure the compose file resolves images under the right owner
+            export GITHUB_REPOSITORY_OWNER="$REPO_OWNER"
+
+            # Pull the freshly-built images and restart only what changed
+            docker compose pull
+            docker compose up -d --remove-orphans
+
+            # Clean up dangling (untagged) image layers left behind
+            docker image prune -f
