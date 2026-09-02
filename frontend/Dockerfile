@@ -1,35 +1,44 @@
+# =========================
 # Build stage
+# =========================
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Enable standalone mode env if needed
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package.json package-lock.json* ./
+
 RUN npm ci
 
 COPY . .
 
 RUN npm run build
 
+
+# =========================
 # Production stage
+# =========================
 FROM node:20-alpine AS runner
 
-WORKDIR /app/app
+WORKDIR /app
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
-    HOSTNAME="0.0.0.0"
+    HOSTNAME=0.0.0.0
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy standalone build output
-COPY --from=builder /app/public ./public
+# Next.js standalone server
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+
+# Static assets
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Public assets
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 USER nextjs
 
