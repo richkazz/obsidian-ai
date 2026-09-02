@@ -11,11 +11,11 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in the root .env file}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in the root .env file}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      - PROVIDER_KEY_SECRET=${PROVIDER_KEY_SECRET}
+      - PROVIDER_KEY_SECRET=${PROVIDER_KEY_SECRET:?Set PROVIDER_KEY_SECRET in the root .env file}
       - DATABASE_TYPE=${DATABASE_TYPE:-sqlite}
       - MONGODB_URL=${MONGODB_URL:-mongodb://mongo:27017/obsidian}
       - MONGODB_DB_NAME=${MONGODB_DB_NAME:-obsidian}
@@ -55,10 +55,12 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_SECRET=${AUTH_SECRET:?Set AUTH_SECRET in the root .env file}
       - AUTH_URL=${AUTH_URL:-http://localhost:3000}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      - NEXT_PUBLIC_ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      # ENCRYPTION_KEY is deliberately injected at runtime. The root layout
+      # publishes it to browser code so CryptoJS can produce payloads that the
+      # backend decrypts with the same value.
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in the root .env file}
       - BACKEND_URL=http://backend:8001
       - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8001}
     depends_on:
