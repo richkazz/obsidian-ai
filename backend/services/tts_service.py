@@ -80,7 +80,7 @@ async def _synthesize_google_tts(
     if not api_key:
         raise RuntimeError("Google Cloud TTS API key is not configured")
 
-    target_voice = voice_name or GOOGLE_TTS_VOICE_NAME
+    target_voice = voice_name if (voice_name and "-" in voice_name) else GOOGLE_TTS_VOICE_NAME
     if language_code:
         target_lang = language_code
     elif target_voice and "-" in target_voice:
