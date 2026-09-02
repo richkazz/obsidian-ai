@@ -8,7 +8,6 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package.json package-lock.json* ./
-
 RUN npm ci
 
 COPY . .
@@ -32,7 +31,7 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 # Next.js standalone server
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone/frontend/ ./
 
 # Static assets
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
