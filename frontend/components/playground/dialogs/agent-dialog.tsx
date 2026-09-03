@@ -982,6 +982,8 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
                   ? "e.g. gemini-3.1-pro"
                   : providers.find((p) => p.id === providerId)?.provider_type === "openrouter"
                   ? "e.g. openai/gpt-5.5"
+                  : providers.find((p) => p.id === providerId)?.provider_type === "nvidia" || providers.find((p) => p.id === providerId)?.provider_type === "nvidia_nim"
+                  ? "e.g. moonshotai/kimi-k3"
                   : "e.g. gpt-5.5"
               }
             />

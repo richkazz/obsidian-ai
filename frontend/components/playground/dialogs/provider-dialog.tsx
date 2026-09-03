@@ -31,6 +31,8 @@ const PROVIDER_TYPES = [
   { value: "anthropic", label: "Anthropic", defaultUrl: "", needsKey: true },
   { value: "google", label: "Google Gemini", defaultUrl: "", needsKey: true },
   { value: "openrouter", label: "OpenRouter", defaultUrl: "https://openrouter.ai/api/v1", needsKey: true },
+  { value: "nvidia", label: "NVIDIA", defaultUrl: "https://integrate.api.nvidia.com", needsKey: true },
+  { value: "nvidia_nim", label: "NVIDIA NIM", defaultUrl: "https://integrate.api.nvidia.com", needsKey: true },
   { value: "custom", label: "Custom (OpenAI-compatible)", defaultUrl: "", needsKey: false },
 ]
 
@@ -214,14 +216,14 @@ export function ProviderDialog({ open, onOpenChange, provider, onUpdated }: Prov
             />
           </div>
 
-          {(providerType === "custom" || providerType === "openrouter") && (
+          {(providerType === "custom" || providerType === "openrouter" || providerType === "nvidia" || providerType === "nvidia_nim") && (
             <div className="grid gap-2">
               <Label htmlFor="base-url">Base URL</Label>
               <Input
                 id="base-url"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="http://localhost:11434"
+                placeholder={selectedType?.defaultUrl || "http://localhost:11434"}
               />
             </div>
           )}
