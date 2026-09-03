@@ -19,11 +19,18 @@ def owned_schema(db, schema_id, user_id):
     if not s: raise HTTPException(404, "Schema not found")
     return s
 
+import jsonschema
+
+def check_valid_meta_schema(schema_dict: dict):
+    try:
+        jsonschema.Draft202012Validator.check_schema(schema_dict)
+    except jsonschema.exceptions.SchemaError as e:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_JSON_SCHEMA", "message": f"Invalid JSON Schema: {e.message}"})
+
 @router.post("", response_model=SchemaResponse, status_code=status.HTTP_201_CREATED)
 def create_schema(body: SchemaCreate, db: Session = Depends(get_db), user: TokenData = Depends(get_current_user)):
     if body.direction not in {"input", "output"}: raise HTTPException(422, "direction must be input or output")
-    problems = validate_json_schema({"type": "object"}, body.canonical_schema)
-    if problems: raise HTTPException(422, detail={"code": "INVALID_JSON_SCHEMA", "details": problems})
+    check_valid_meta_schema(body.canonical_schema)
     s = Schema(user_id=int(user.user_id), name=body.name, direction=body.direction); db.add(s); db.flush()
     v = SchemaVersion(schema_id=s.id, version_number=1, canonical_schema_json=json.dumps(body.canonical_schema), source_format=body.source_format, source_definition=body.source_definition, compatibility_mode=body.compatibility_mode); db.add(v); db.commit(); db.refresh(s); return schema_response(db, s)
 
@@ -31,6 +38,7 @@ def create_schema(body: SchemaCreate, db: Session = Depends(get_db), user: Token
 def create_version(schema_id: int, body: SchemaCreate, db: Session = Depends(get_db), user: TokenData = Depends(get_current_user)):
     s = owned_schema(db, schema_id, user.user_id)
     if body.direction != s.direction: raise HTTPException(422, "Schema direction cannot change")
+    check_valid_meta_schema(body.canonical_schema)
     version = (db.query(func.max(SchemaVersion.version_number)).filter(SchemaVersion.schema_id == s.id).scalar() or 0) + 1
     v = SchemaVersion(schema_id=s.id, version_number=version, canonical_schema_json=json.dumps(body.canonical_schema), source_format=body.source_format, source_definition=body.source_definition, compatibility_mode=body.compatibility_mode); db.add(v); db.commit(); db.refresh(v); return version_response(v)
 

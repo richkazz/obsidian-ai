@@ -24,10 +24,12 @@ contract.
 
 ```bash
 curl -X POST "$OBSIDIAN_URL/api/v1/agent-invocations/123" \
-  -H "X-API-Key: $OBSIDIAN_API_KEY" \
+  -H "Authorization: Bearer $OBSIDIAN_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"version": 4, "input": {"question": "Where is my order?"}}'
 ```
+
+Note: The API accepts application API keys via either `Authorization: Bearer <token>` (recommended) or `X-API-Key: <token>`.
 
 Responses include `request_id`, pinned agent/schema versions, a status, and a
 validated JSON `output`. Inputs are validated before execution and output is

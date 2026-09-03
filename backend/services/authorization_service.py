@@ -242,36 +242,39 @@ async def validate_resource_access(
 
     # 2. Check individual resource ownership
     if DATABASE_TYPE == "mongo":
-        mongo_db = get_database()
-        if mongo_db is None:
+        mongo_db = get_database() if not db else None
+        if mongo_db is None and not db:
             # If mongo db instance is not connected (e.g. in standalone unit test), pass ownership validation
             return
-        if tool_ids:
-            for tid in tool_ids:
-                t = await ToolDefinitionCollection.find_by_id(mongo_db, tid)
-                if not t or str(t.get("user_id")) != user_id:
-                    raise HTTPException(status_code=403, detail=f"Unauthorized access to tool ID '{tid}'")
-        if mcp_server_ids:
-            for mid in mcp_server_ids:
-                m = await MCPServerCollection.find_by_id(mongo_db, mid)
-                if not m or str(m.get("user_id")) != user_id:
-                    raise HTTPException(status_code=403, detail=f"Unauthorized access to MCP server ID '{mid}'")
-        if kb_ids:
-            for kid in kb_ids:
-                k = await KnowledgeBaseCollection.find_by_id(mongo_db, kid)
-                if not k or (str(k.get("user_id")) != user_id and not k.get("is_shared")):
-                    raise HTTPException(status_code=403, detail=f"Unauthorized access to knowledge base ID '{kid}'")
-        if secret_ids:
-            for sid in secret_ids:
-                s = await UserSecretCollection.find_by_id(mongo_db, sid)
-                if not s or str(s.get("user_id")) != user_id:
-                    raise HTTPException(status_code=403, detail=f"Unauthorized access to secret ID '{sid}'")
-        if skill_ids:
-            for sk_id in skill_ids:
-                sk = await SkillCollection.find_by_id(mongo_db, sk_id)
-                if not sk or str(sk.get("user_id")) != user_id:
-                    raise HTTPException(status_code=403, detail=f"Unauthorized access to skill ID '{sk_id}'")
+        if mongo_db is not None:
+            if tool_ids:
+                for tid in tool_ids:
+                    t = await ToolDefinitionCollection.find_by_id(mongo_db, tid)
+                    if not t or str(t.get("user_id")) != user_id:
+                        raise HTTPException(status_code=403, detail=f"Unauthorized access to tool ID '{tid}'")
+            if mcp_server_ids:
+                for mid in mcp_server_ids:
+                    m = await MCPServerCollection.find_by_id(mongo_db, mid)
+                    if not m or str(m.get("user_id")) != user_id:
+                        raise HTTPException(status_code=403, detail=f"Unauthorized access to MCP server ID '{mid}'")
+            if kb_ids:
+                for kid in kb_ids:
+                    k = await KnowledgeBaseCollection.find_by_id(mongo_db, kid)
+                    if not k or (str(k.get("user_id")) != user_id and not k.get("is_shared")):
+                        raise HTTPException(status_code=403, detail=f"Unauthorized access to knowledge base ID '{kid}'")
+            if secret_ids:
+                for sid in secret_ids:
+                    s = await UserSecretCollection.find_by_id(mongo_db, sid)
+                    if not s or str(s.get("user_id")) != user_id:
+                        raise HTTPException(status_code=403, detail=f"Unauthorized access to secret ID '{sid}'")
+            if skill_ids:
+                for sk_id in skill_ids:
+                    sk = await SkillCollection.find_by_id(mongo_db, sk_id)
+                    if not sk or str(sk.get("user_id")) != user_id:
+                        raise HTTPException(status_code=403, detail=f"Unauthorized access to skill ID '{sk_id}'")
     else:
+        if not db:
+            return
         if tool_ids:
             for tid in tool_ids:
                 t = db.query(ToolDefinition).filter(ToolDefinition.id == int(tid), ToolDefinition.user_id == int(user_id)).first()

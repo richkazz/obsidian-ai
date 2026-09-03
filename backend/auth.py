@@ -292,17 +292,21 @@ class ApplicationKeyData(BaseModel):
 
 
 async def get_application_api_key(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     api_key: Optional[str] = Depends(api_key_header),
     db: Session = Depends(get_db),
 ) -> ApplicationKeyData:
     """Authenticate a prefixed one-time application API key.
 
-    Legacy X-API-Key/X-API-Secret clients remain untouched. New keys are a
-    single opaque value (`oba_<prefix>.<secret>`) and only their bcrypt digest
-    is retained.
+    Accepts key via either Bearer header (`Authorization: Bearer oba_...`)
+    or X-API-Key header (`X-API-Key: oba_...`).
+    New keys are a single opaque value (`oba_<prefix>.<secret>`) and only their
+    bcrypt digest is retained.
     """
-    if not api_key or "." not in api_key:
+    token = credentials.credentials if credentials else api_key
+    if not token or "." not in token:
         raise HTTPException(status_code=401, detail="Application API key required")
+    api_key = token
     prefix, secret = api_key.split(".", 1)
     from models import APIKey, Application
     from services.api_key_service import verify_api_key
