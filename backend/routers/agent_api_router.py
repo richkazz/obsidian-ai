@@ -48,10 +48,12 @@ def get_agent_api_config(agent_id: int, db: Session = Depends(get_db), user: Tok
     config = db.query(AgentAPIConfig).filter(AgentAPIConfig.agent_id == agent_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="Agent API configuration not found")
+    published = db.get(AgentVersion, config.published_version_id) if config.published_version_id else None
     return {
         "agent_id": str(agent_id),
         "owner_application_id": str(config.owner_application_id) if config.owner_application_id else None,
         "publication_state": config.publication_state,
+        "agent_version": published.version_number if published else None,
         "input_schema_version_id": str(config.input_schema_version_id) if config.input_schema_version_id else None,
         "output_schema_version_id": str(config.output_schema_version_id) if config.output_schema_version_id else None,
         "required_scopes": parse(config.required_scopes_json, []),
@@ -129,13 +131,28 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
     from models import Session as ChatSession, Message
     from services.agent_runner import run_agent_headless
     agent = db.get(Agent, agent_id)
-    session = ChatSession(user_id=agent.user_id, title="API invocation", entity_type="agent", entity_id=agent_id)
-    db.add(session); db.flush(); db.add(Message(session_id=session.id, role="user", content=json.dumps(body.input))); db.commit()
+    session = None
+    if body.session_id is not None:
+        try:
+            session = db.query(ChatSession).filter(
+                ChatSession.id == int(body.session_id),
+                ChatSession.user_id == agent.user_id,
+                ChatSession.entity_type == "agent",
+                ChatSession.entity_id == agent_id,
+            ).first()
+        except (TypeError, ValueError):
+            session = None
+        if not session:
+            raise HTTPException(404, detail={"code": "SESSION_NOT_FOUND", "request_id": request_id})
+    else:
+        session = ChatSession(user_id=agent.user_id, title="API invocation", entity_type="agent", entity_id=agent_id)
+        db.add(session); db.flush()
+    db.add(Message(session_id=session.id, role="user", content=json.dumps(body.input))); db.commit()
 
     output = None
 
     try:
-        raw = await run_agent_headless(session.id, agent_id, db)
+        raw = await run_agent_headless(session.id, agent_id, db, response_schema=output_schema_dict)
         output = json.loads(raw or "")
         errors = validate_json_schema(output_schema_dict, output)
     except (json.JSONDecodeError, ValueError, TypeError) as e:
@@ -145,9 +162,10 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
     if errors:
         try:
             repair_prompt = f"The previous output failed schema validation with errors: {errors}. Please return a corrected valid JSON object matching the required schema."
+            db.add(Message(session_id=session.id, role="assistant", content=raw or ""))
             db.add(Message(session_id=session.id, role="user", content=repair_prompt))
             db.commit()
-            raw_repair = await run_agent_headless(session.id, agent_id, db)
+            raw_repair = await run_agent_headless(session.id, agent_id, db, response_schema=output_schema_dict)
             output = json.loads(raw_repair or "")
             errors = validate_json_schema(output_schema_dict, output)
         except Exception as e:
@@ -156,6 +174,7 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
     if errors:
         db.add(APIRequest(request_id=request_id, application_id=int(key.application_id), api_key_id=int(key.api_key_id), agent_id=agent_id, agent_version_id=config.published_version_id, status="failed", error_code="OUTPUT_SCHEMA_VALIDATION_FAILED", duration_ms=int((time.monotonic()-started)*1000))); db.commit()
         raise HTTPException(status_code=502, detail={"error": {"code": "OUTPUT_SCHEMA_VALIDATION_FAILED", "message": "Agent output failed schema validation", "request_id": request_id, "details": errors}})
+    db.add(Message(session_id=session.id, role="assistant", content=json.dumps(output)))
     db.add(APIRequest(request_id=request_id, application_id=int(key.application_id), api_key_id=int(key.api_key_id), agent_id=agent_id, agent_version_id=config.published_version_id, status="completed", duration_ms=int((time.monotonic()-started)*1000))); db.commit()
     version = db.get(AgentVersion, config.published_version_id)
-    return {"request_id": request_id, "agent_id": str(agent_id), "agent_version": version.version_number if version else None, "input_schema_version": input_schema.version_number, "output_schema_version": output_schema.version_number, "status": "completed", "output": output}
+    return {"request_id": request_id, "session_id": str(session.id), "agent_id": str(agent_id), "agent_version": version.version_number if version else None, "input_schema_version": input_schema.version_number, "output_schema_version": output_schema.version_number, "status": "completed", "output": output}

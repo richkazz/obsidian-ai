@@ -256,6 +256,8 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
   const [publicationState, setPublicationState] = useState<string>("draft")
   const [inputSchemaVerId, setInputSchemaVerId] = useState<string>("")
   const [outputSchemaVerId, setOutputSchemaVerId] = useState<string>("")
+  const [requiredScopes, setRequiredScopes] = useState<string[]>(["agent:invoke"])
+  const [scopeInput, setScopeInput] = useState("")
   const [apiRateLimit, setApiRateLimit] = useState<string>("60/minute")
   const [schemasList, setSchemasList] = useState<any[]>([])
   const [appsList, setAppsList] = useState<any[]>([])
@@ -315,6 +317,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
           setPublicationState(cfg.publication_state || "draft")
           setInputSchemaVerId(cfg.input_schema_version_id ? String(cfg.input_schema_version_id) : "")
           setOutputSchemaVerId(cfg.output_schema_version_id ? String(cfg.output_schema_version_id) : "")
+          setRequiredScopes(Array.isArray(cfg.required_scopes) && cfg.required_scopes.length > 0 ? cfg.required_scopes : ["agent:invoke"])
           setApiRateLimit(cfg.rate_limit || "60/minute")
         }
       }).catch(() => {
@@ -374,7 +377,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
             owner_application_id: ownerAppId || null,
             input_schema_version_id: inputSchemaVerId || null,
             output_schema_version_id: outputSchemaVerId || null,
-            required_scopes: ["agent:invoke"],
+            required_scopes: requiredScopes,
             rate_limit: apiRateLimit || "60/minute",
           }).catch(() => {})
         }
@@ -401,7 +404,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
             owner_application_id: ownerAppId || null,
             input_schema_version_id: inputSchemaVerId || null,
             output_schema_version_id: outputSchemaVerId || null,
-            required_scopes: ["agent:invoke"],
+            required_scopes: requiredScopes,
             rate_limit: apiRateLimit || "60/minute",
           }).catch(() => {})
         }
@@ -514,6 +517,14 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
     setVersions([])
     setVersionsOpen(false)
     setDiffVersion(null)
+    setRequiredScopes(["agent:invoke"])
+    setScopeInput("")
+  }
+
+  const addScope = () => {
+    const scope = scopeInput.trim()
+    if (scope && !requiredScopes.includes(scope)) setRequiredScopes([...requiredScopes, scope])
+    setScopeInput("")
   }
 
   const handleToggleVersions = async () => {
@@ -857,6 +868,29 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
                 onChange={(e) => setApiRateLimit(e.target.value)}
                 placeholder="e.g. 60/minute"
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Required Scopes</Label>
+              <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-md border px-3 py-2">
+                {requiredScopes.map((scope) => (
+                  <Badge key={scope} variant="secondary" className="gap-1 font-mono text-xs">
+                    {scope}
+                    <button type="button" aria-label={`Remove ${scope}`} onClick={() => setRequiredScopes(requiredScopes.filter((item) => item !== scope))}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+                <Input
+                  value={scopeInput}
+                  onChange={(event) => setScopeInput(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addScope() } }}
+                  onBlur={addScope}
+                  placeholder="Add scope"
+                  className="h-6 min-w-32 flex-1 border-0 p-0 shadow-none focus-visible:ring-0"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Press Enter to add a scope. Keys must include every scope listed here.</p>
             </div>
 
             <div className="p-3 border rounded-lg bg-muted/20 space-y-2">

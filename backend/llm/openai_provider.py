@@ -90,7 +90,7 @@ class OpenAIProvider(BaseLLMProvider):
             msgs.append(msg)
         return msgs
 
-    async def chat(self, messages, system_prompt=None, tools=None) -> LLMMessage:
+    async def chat(self, messages, system_prompt=None, tools=None, response_schema=None) -> LLMMessage:
         self._tool_name_map = {}
         payload = {
             "model": self.model_id,
@@ -99,6 +99,8 @@ class OpenAIProvider(BaseLLMProvider):
         }
         if tools:
             payload["tools"] = self._prepare_tools(tools)
+        if response_schema:
+            payload["response_format"] = {"type": "json_schema", "json_schema": {"name": "agent_output", "schema": response_schema, "strict": True}}
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
@@ -267,7 +269,7 @@ class OpenAIProvider(BaseLLMProvider):
                     if tc_delta.get("function", {}).get("arguments"):
                         tool_call_acc[idx]["arguments"] += tc_delta["function"]["arguments"]
 
-    async def chat_stream(self, messages, system_prompt=None, tools=None) -> AsyncIterator[LLMStreamChunk]:
+    async def chat_stream(self, messages, system_prompt=None, tools=None, response_schema=None) -> AsyncIterator[LLMStreamChunk]:
         self._tool_name_map = {}
         payload = {
             "model": self.model_id,

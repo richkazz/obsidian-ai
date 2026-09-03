@@ -45,6 +45,7 @@ async def run_agent_headless(
     wa_reply_chat_id: str | None = None,
     wa_should_quote: bool = False,
     current_batch_texts: list[str] | None = None,
+    response_schema: dict | None = None,
 ) -> str | None:
     """
     Run the most recent unprocessed user message in a session through its agent
@@ -61,8 +62,9 @@ async def run_agent_headless(
             wa_reply_chat_id=wa_reply_chat_id,
             wa_should_quote=wa_should_quote,
             current_batch_texts=current_batch_texts,
+            response_schema=response_schema,
         )
-    return await _run_headless_sqlite(int(session_id), int(agent_id), db)
+    return await _run_headless_sqlite(int(session_id), int(agent_id), db, response_schema=response_schema)
 
 
 # ── Provider auto-assignment ───────────────────────────────────────────────────
@@ -170,7 +172,7 @@ async def preprocess_batch(texts: list[str], llm) -> BatchPlan:
 
 # ── SQLite ─────────────────────────────────────────────────────────────────────
 
-async def _run_headless_sqlite(session_id: int, agent_id: int, db) -> str | None:
+async def _run_headless_sqlite(session_id: int, agent_id: int, db, response_schema: dict | None = None) -> str | None:
     from models import Agent, LLMProvider, Message, AgentMemory, ToolDefinition, HITLApproval
     from llm.base import LLMMessage
     from llm.provider_factory import create_provider_from_config
@@ -232,7 +234,7 @@ async def _run_headless_sqlite(session_id: int, agent_id: int, db) -> str | None
     system_prompt = (
         (agent.system_prompt or "")
         + _build_memory_injection(_agent_memories)
-        + "\n\nIMPORTANT: You are responding via WhatsApp. Reply in plain text only. Do NOT use artifacts, XML tags, or markdown code blocks. Keep responses concise and conversational. If a tool returns an error, tell the user honestly what went wrong."
+        + ("\n\nReturn only valid JSON matching the supplied response schema. Do not wrap it in markdown or add commentary." if response_schema else "\n\nIMPORTANT: You are responding via WhatsApp. Reply in plain text only. Do NOT use artifacts, XML tags, or markdown code blocks. Keep responses concise and conversational. If a tool returns an error, tell the user honestly what went wrong.")
         + (_SANDBOX_SYSTEM_HINT if _sandbox_active else "")
     )
 
@@ -258,7 +260,7 @@ async def _run_headless_sqlite(session_id: int, agent_id: int, db) -> str | None
     for _round in range(MAX_TOOL_ROUNDS):
         tool_calls_collected = []
 
-        async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=tools):
+        async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=tools, response_schema=response_schema):
             if chunk.type == "content":
                 full_content += chunk.content
             elif chunk.type == "tool_call":
@@ -353,6 +355,7 @@ async def _run_headless_mongo(
     wa_reply_chat_id: str | None = None,
     wa_should_quote: bool = False,
     current_batch_texts: list[str] | None = None,
+    response_schema: dict | None = None,
 ) -> str | None:
     from database_mongo import get_database
     from models_mongo import AgentCollection, LLMProviderCollection, MessageCollection, AgentMemoryCollection, ToolDefinitionCollection, HITLApprovalCollection
@@ -461,7 +464,7 @@ async def _run_headless_mongo(
     for _round in range(MAX_TOOL_ROUNDS):
         tool_calls_collected = []
 
-        async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=tools):
+        async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=tools, response_schema=response_schema):
             if chunk.type == "content":
                 full_content += chunk.content
             elif chunk.type == "tool_call":

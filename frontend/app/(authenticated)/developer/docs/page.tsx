@@ -13,6 +13,9 @@ interface PublishedContract {
   config: Record<string, unknown>
   inputSchema: Record<string, unknown> | undefined
   outputSchema: Record<string, unknown> | undefined
+  inputSchemaVersion: number | undefined
+  outputSchemaVersion: number | undefined
+  agentVersion: number | undefined
 }
 
 export default function APIDocsPage() {
@@ -39,6 +42,9 @@ export default function APIDocsPage() {
             config,
             inputSchema: input?.latest_version?.canonical_schema,
             outputSchema: output?.latest_version?.canonical_schema,
+            inputSchemaVersion: input?.latest_version?.version_number,
+            outputSchemaVersion: output?.latest_version?.version_number,
+            agentVersion: config.agent_version,
           }
         } catch {
           return null
@@ -50,23 +56,27 @@ export default function APIDocsPage() {
     }
   }
 
-  const curlExample = `curl -X POST "https://your-domain.com/api/v1/agent-invocations/<AGENT_ID>" \\
+  const backendEndpoint = process.env.NEXT_PUBLIC_BACKEND_URL || (typeof window !== "undefined" ? window.location.origin : "")
+  const invocationUrl = `${backendEndpoint}/api/v1/agent-invocations/<AGENT_ID>`
+  const curlExample = `curl -X POST "${invocationUrl}" \\
   -H "Authorization: Bearer oba_<prefix>.<secret>" \\
   -H "Content-Type: application/json" \\
   -d '{
     "input": {
       "query": "Hello Obsidian AI"
-    }
+    },
+    "session_id": "<SESSION_ID>"
   }'`
 
-  const jsExample = `const response = await fetch("https://your-domain.com/api/v1/agent-invocations/<AGENT_ID>", {
+  const jsExample = `const response = await fetch("${invocationUrl}", {
   method: "POST",
   headers: {
     "Authorization": "Bearer oba_<prefix>.<secret>",
     "Content-Type": "application/json"
   },
   body: JSON.stringify({
-    input: { query: "Hello Obsidian AI" }
+    input: { query: "Hello Obsidian AI" },
+    session_id: "<SESSION_ID>"
   })
 });
 const data = await response.json();`
@@ -74,9 +84,9 @@ const data = await response.json();`
   const pythonExample = `import requests
 
 response = requests.post(
-    "https://your-domain.com/api/v1/agent-invocations/<AGENT_ID>",
+    "${invocationUrl}",
     headers={"Authorization": "Bearer oba_<prefix>.<secret>"},
-    json={"input": {"query": "Hello Obsidian AI"}},
+    json={"input": {"query": "Hello Obsidian AI"}, "session_id": "<SESSION_ID>"},
 )
 print(response.json())`
 
@@ -137,6 +147,12 @@ print(response.json())`
                   <Badge>published</Badge>
                 </div>
                 <p className="text-xs font-mono break-all">POST /api/v1/agent-invocations/{contract.agentId}</p>
+                <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-3">
+                  <span>Agent ID: <strong className="font-mono text-foreground">{contract.agentId}</strong></span>
+                  <span>Agent version: <strong className="text-foreground">v{contract.agentVersion ?? "-"}</strong></span>
+                  <span>Scopes: <strong className="font-mono text-foreground">{Array.isArray(contract.config.required_scopes) ? contract.config.required_scopes.join(" ") : "agent:invoke"}</strong></span>
+                </div>
+                <p className="text-xs text-muted-foreground">Pinned schemas: input v{contract.inputSchemaVersion ?? "-"}, output v{contract.outputSchemaVersion ?? "-"}. Responses include a session ID for continuing history.</p>
                 <div className="grid gap-3 md:grid-cols-2">
                   <pre className="p-3 bg-muted text-xs overflow-x-auto">{JSON.stringify(contract.inputSchema || {}, null, 2)}</pre>
                   <pre className="p-3 bg-muted text-xs overflow-x-auto">{JSON.stringify(contract.outputSchema || {}, null, 2)}</pre>

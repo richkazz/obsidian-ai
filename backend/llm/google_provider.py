@@ -56,7 +56,7 @@ class GoogleProvider(BaseLLMProvider):
                 declarations.append(decl)
         return [{"function_declarations": declarations}] if declarations else []
 
-    async def chat(self, messages, system_prompt=None, tools=None) -> LLMMessage:
+    async def chat(self, messages, system_prompt=None, tools=None, response_schema=None) -> LLMMessage:
         payload = {
             "contents": self._build_contents(messages),
         }
@@ -68,6 +68,9 @@ class GoogleProvider(BaseLLMProvider):
             generation_config["temperature"] = self.config["temperature"]
         if self.config.get("max_tokens"):
             generation_config["maxOutputTokens"] = self.config["max_tokens"]
+        if response_schema:
+            generation_config["responseMimeType"] = "application/json"
+            generation_config["responseJsonSchema"] = response_schema
         if generation_config:
             payload["generationConfig"] = generation_config
 
@@ -99,7 +102,7 @@ class GoogleProvider(BaseLLMProvider):
                 return LLMMessage(role="assistant", content=text)
             return LLMMessage(role="assistant", content="")
 
-    async def chat_stream(self, messages, system_prompt=None, tools=None) -> AsyncIterator[LLMStreamChunk]:
+    async def chat_stream(self, messages, system_prompt=None, tools=None, response_schema=None) -> AsyncIterator[LLMStreamChunk]:
         payload = {
             "contents": self._build_contents(messages),
         }
@@ -111,6 +114,9 @@ class GoogleProvider(BaseLLMProvider):
             generation_config["temperature"] = self.config["temperature"]
         if self.config.get("max_tokens"):
             generation_config["maxOutputTokens"] = self.config["max_tokens"]
+        if response_schema:
+            generation_config["responseMimeType"] = "application/json"
+            generation_config["responseJsonSchema"] = response_schema
         if generation_config:
             payload["generationConfig"] = generation_config
 

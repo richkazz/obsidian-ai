@@ -142,7 +142,7 @@ class AnthropicProvider(BaseLLMProvider):
             if self.config.get("top_p") is not None:
                 payload["top_p"] = self.config["top_p"]
 
-    async def chat(self, messages, system_prompt=None, tools=None) -> LLMMessage:
+    async def chat(self, messages, system_prompt=None, tools=None, response_schema=None) -> LLMMessage:
         payload = {
             "model": self.model_id,
             "messages": self._build_messages(messages),
@@ -182,7 +182,7 @@ class AnthropicProvider(BaseLLMProvider):
                 ]
             return LLMMessage(role="assistant", content="".join(content_parts), tool_calls=parsed_tool_calls)
 
-    async def chat_stream(self, messages, system_prompt=None, tools=None) -> AsyncIterator[LLMStreamChunk]:
+    async def chat_stream(self, messages, system_prompt=None, tools=None, response_schema=None) -> AsyncIterator[LLMStreamChunk]:
         payload = {
             "model": self.model_id,
             "messages": self._build_messages(messages),

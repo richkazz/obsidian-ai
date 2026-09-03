@@ -62,6 +62,7 @@ class BaseLLMProvider(ABC):
         messages: list[LLMMessage],
         system_prompt: str | None = None,
         tools: list[dict] | None = None,
+        response_schema: dict | None = None,
     ) -> LLMMessage:
         """Non-streaming chat completion."""
         ...
@@ -72,6 +73,7 @@ class BaseLLMProvider(ABC):
         messages: list[LLMMessage],
         system_prompt: str | None = None,
         tools: list[dict] | None = None,
+        response_schema: dict | None = None,
     ) -> AsyncIterator[LLMStreamChunk]:
         """Streaming chat completion yielding chunks."""
         ...
