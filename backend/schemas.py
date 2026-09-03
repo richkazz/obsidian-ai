@@ -749,6 +749,11 @@ class WorkflowScheduleListResponse(BaseModel):
 # HITL Schemas
 # ============================================================================
 
+
+
+class HITLRespondRequest(BaseModel):
+    status: str  # approved | denied
+
 class HITLApprovalResponse(BaseModel):
     approval_id: str
     session_id: str
