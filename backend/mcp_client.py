@@ -1,14 +1,15 @@
 """
 MCP Client module for connecting to MCP servers.
 
-Provides on-demand connection management for both stdio and SSE transports.
-Tools discovered from MCP servers are formatted as OpenAI-compatible function specs.
+Provides on-demand connection management for stdio, SSE, and Streamable HTTP transports.
+Discovered MCP tools are exposed as MAF FunctionTool objects with namespace isolation.
 """
 import json
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncIterator, Any
 
+from agent_framework import FunctionTool
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
@@ -18,43 +19,77 @@ logger = logging.getLogger(__name__)
 
 
 class MCPConnection:
-    """Represents an active connection to an MCP server."""
+    """Represents an active connection to an MCP server, exposing tools as MAF FunctionTool instances."""
 
     def __init__(self, server_id: str, server_name: str, session: ClientSession):
         self.server_id = server_id
         self.server_name = server_name
         self.session = session
         self.tools: list[dict] = []
+        self.function_tools: list[FunctionTool] = []
         self.tool_names: set[str] = set()
 
-    async def discover_tools(self) -> list[dict]:
-        """List tools from the MCP server and format as OpenAI function specs."""
+    async def discover_tools(self) -> list[FunctionTool]:
+        """List tools from the MCP server and format as MAF FunctionTool instances."""
         result = await self.session.list_tools()
         self.tools = []
+        self.function_tools = []
         self.tool_names = set()
-        for tool in result.tools:
-            prefixed_name = f"mcp__{self.server_name}__{tool.name}"
+
+        for mcp_tool in result.tools:
+            prefixed_name = f"mcp__{self.server_name}__{mcp_tool.name}"
             self.tool_names.add(prefixed_name)
+
+            schema = mcp_tool.inputSchema or {"type": "object", "properties": {}}
+
+            # Legacy OpenAI spec dict
             self.tools.append({
                 "type": "function",
                 "function": {
                     "name": prefixed_name,
-                    "description": tool.description or "",
-                    "parameters": tool.inputSchema or {"type": "object", "properties": {}},
+                    "description": mcp_tool.description or "",
+                    "parameters": schema,
                 },
             })
-        return self.tools
+
+            orig_name = mcp_tool.name
+
+            # Closure factory capturing orig_name and prefixed_name
+            def _make_handler(orig_n: str, pref_n: str):
+                async def handler(**kwargs) -> str:
+                    try:
+                        return await self.call_tool(orig_n, kwargs)
+                    except Exception as e:
+                        logger.error(f"Error executing MCP tool {pref_n}: {e}")
+                        return f"MCP tool execution failed ({self.server_name}/{orig_n}): {e}"
+                return handler
+
+            handler_fn = _make_handler(orig_name, prefixed_name)
+
+            ft = FunctionTool(
+                func=handler_fn,
+                name=prefixed_name,
+                description=mcp_tool.description or f"MCP tool {prefixed_name}",
+                input_model=schema,
+            )
+            self.function_tools.append(ft)
+
+        return self.function_tools
 
     async def call_tool(self, original_tool_name: str, arguments: dict) -> str:
         """Call a tool on the MCP server. Accepts the unprefixed original name."""
-        result = await self.session.call_tool(original_tool_name, arguments)
-        parts = []
-        for content_item in result.content:
-            if hasattr(content_item, "text"):
-                parts.append(content_item.text)
-            else:
-                parts.append(str(content_item))
-        return "\n".join(parts) if parts else ""
+        try:
+            result = await self.session.call_tool(original_tool_name, arguments)
+            parts = []
+            for content_item in getattr(result, "content", []):
+                if hasattr(content_item, "text"):
+                    parts.append(content_item.text)
+                else:
+                    parts.append(str(content_item))
+            return "\n".join(parts) if parts else ""
+        except (ConnectionResetError, BrokenPipeError, Exception) as e:
+            logger.error(f"MCP server process error during call to {original_tool_name}: {e}")
+            return f"MCP server stdio process crashed during tool invocation: {e}"
 
 
 def parse_mcp_tool_name(prefixed_name: str) -> tuple[str, str] | None:
