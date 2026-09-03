@@ -54,8 +54,8 @@ class MCPConnection:
 
             orig_name = mcp_tool.name
 
-            # Handler closure capturing orig_name and prefixed_name
-            async def _make_handler(orig_n: str, pref_n: str):
+            # Closure factory capturing orig_name and prefixed_name
+            def _make_handler(orig_n: str, pref_n: str):
                 async def handler(**kwargs) -> str:
                     try:
                         return await self.call_tool(orig_n, kwargs)
@@ -64,7 +64,7 @@ class MCPConnection:
                         return f"MCP tool execution failed ({self.server_name}/{orig_n}): {e}"
                 return handler
 
-            handler_fn = await _make_handler(orig_name, prefixed_name)
+            handler_fn = _make_handler(orig_name, prefixed_name)
 
             ft = FunctionTool(
                 func=handler_fn,

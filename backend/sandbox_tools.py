@@ -232,11 +232,158 @@ def create_sandbox_tools(container_id: str) -> dict[str, FunctionTool]:
     return tools
 
 
-# Export schema list for legacy router imports
+# Static tool schema declarations avoiding import-time FunctionTool instantiation
 SANDBOX_TOOL_SCHEMAS = [
-    tool_obj.to_json_schema_spec()
-    for tool_obj in create_sandbox_tools("default").values()
+    {
+        "type": "function",
+        "function": {
+            "name": "sandbox_bash",
+            "description": "Run a shell command inside the Docker sandbox. Working directory is /workspace.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "title": "Command"},
+                },
+                "required": ["command"],
+                "title": "sandbox_bash_input",
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sandbox_write",
+            "description": "Write content to a file inside the Docker sandbox. Creates parent dirs if needed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "title": "Path"},
+                    "content": {"type": "string", "title": "Content"},
+                },
+                "required": ["path", "content"],
+                "title": "sandbox_write_input",
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sandbox_read",
+            "description": "Read the contents of a file inside the Docker sandbox.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "title": "Path"},
+                },
+                "required": ["path"],
+                "title": "sandbox_read_input",
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sandbox_ls",
+            "description": "List files and directories inside the Docker sandbox.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": "//workspace", "title": "Path"},
+                },
+                "title": "sandbox_ls_input",
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sandbox_glob",
+            "description": "Find files matching a pattern inside the Docker sandbox.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "title": "Pattern"},
+                    "directory": {"type": "string", "default": "//workspace", "title": "Directory"},
+                },
+                "required": ["pattern"],
+                "title": "sandbox_glob_input",
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sandbox_grep",
+            "description": "Search file contents for a pattern inside the Docker sandbox.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "title": "Pattern"},
+                    "path": {"type": "string", "default": "//workspace", "title": "Path"},
+                    "recursive": {"type": "boolean", "default": True, "title": "Recursive"},
+                },
+                "required": ["pattern"],
+                "title": "sandbox_grep_input",
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sandbox_delete",
+            "description": "Delete a file or directory inside the Docker sandbox.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "title": "Path"},
+                    "recursive": {"type": "boolean", "default": False, "title": "Recursive"},
+                },
+                "required": ["path"],
+                "title": "sandbox_delete_input",
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sandbox_python",
+            "description": "Execute Python code inside the Docker sandbox and return stdout/stderr.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "title": "Code"},
+                    "timeout": {"type": "integer", "default": 30, "title": "Timeout"},
+                },
+                "required": ["code"],
+                "title": "sandbox_python_input",
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sandbox_node",
+            "description": "Execute JavaScript/TypeScript code inside the Docker sandbox using Node.js.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "title": "Code"},
+                    "typescript": {"type": "boolean", "default": False, "title": "Typescript"},
+                    "timeout": {"type": "integer", "default": 30, "title": "Timeout"},
+                },
+                "required": ["code"],
+                "title": "sandbox_node_input",
+            },
+        },
+    },
 ]
+
+
+def get_sandbox_tool_schemas(container_id: str | None = None) -> list[dict]:
+    """Get JSON schema specs for all 9 sandbox tools."""
+    if container_id:
+        return [t.to_json_schema_spec() for t in create_sandbox_tools(container_id).values()]
+    return list(SANDBOX_TOOL_SCHEMAS)
 
 
 def is_sandbox_tool(tool_name: str) -> bool:

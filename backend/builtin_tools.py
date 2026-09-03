@@ -114,14 +114,78 @@ async def web_search(query: str, max_results: int = 8) -> str:
     return json.dumps({"query": query, "results": results})
 
 
+import ast
+import math
+import operator
+
+_ALLOWED_OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+
+_ALLOWED_FUNCTIONS = {
+    "abs": abs,
+    "round": round,
+    "min": min,
+    "max": max,
+    "pow": pow,
+    "sqrt": math.sqrt,
+    "ceil": math.ceil,
+    "floor": math.floor,
+}
+
+_ALLOWED_CONSTANTS = {
+    "pi": math.pi,
+    "e": math.e,
+}
+
+
+def _safe_eval_ast(node):
+    if isinstance(node, ast.Expression):
+        return _safe_eval_ast(node.body)
+    elif isinstance(node, ast.Constant):
+        if isinstance(node.value, (int, float)):
+            return node.value
+        raise ValueError(f"Unsupported constant type: {type(node.value).__name__}")
+    elif isinstance(node, ast.Name):
+        if node.id in _ALLOWED_CONSTANTS:
+            return _ALLOWED_CONSTANTS[node.id]
+        raise ValueError(f"Name '{node.id}' is not allowed")
+    elif isinstance(node, ast.UnaryOp):
+        op_type = type(node.op)
+        if op_type in _ALLOWED_OPERATORS:
+            return _ALLOWED_OPERATORS[op_type](_safe_eval_ast(node.operand))
+        raise ValueError(f"Unsupported unary operator: {op_type.__name__}")
+    elif isinstance(node, ast.BinOp):
+        op_type = type(node.op)
+        if op_type in _ALLOWED_OPERATORS:
+            left = _safe_eval_ast(node.left)
+            right = _safe_eval_ast(node.right)
+            return _ALLOWED_OPERATORS[op_type](left, right)
+        raise ValueError(f"Unsupported binary operator: {op_type.__name__}")
+    elif isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name) and node.func.id in _ALLOWED_FUNCTIONS:
+            args = [_safe_eval_ast(arg) for arg in node.args]
+            return _ALLOWED_FUNCTIONS[node.func.id](*args)
+        raise ValueError("Unsupported function call")
+    else:
+        raise ValueError(f"Unsupported expression syntax: {type(node).__name__}")
+
+
 @ai_function
 def calculator(expression: str) -> str:
-    """Safely evaluate a mathematical expression and return the string result."""
-    allowed_names = {"abs": abs, "round": round, "min": min, "max": max, "pow": pow}
+    """Safely evaluate a mathematical expression using an AST parser and return the result."""
     try:
-        # Strip suspicious chars
         clean_expr = expression.strip()
-        result = eval(clean_expr, {"__builtins__": None}, allowed_names)
+        parsed = ast.parse(clean_expr, mode="eval")
+        result = _safe_eval_ast(parsed)
         return json.dumps({"expression": expression, "result": str(result)})
     except Exception as e:
         return json.dumps({"expression": expression, "error": f"Calculation error: {e}"})

@@ -150,8 +150,11 @@ def create_provider_from_config(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to initialize client for provider {provider_type}: {e}")
-        raise HTTPException(status_code=400, detail="Invalid provider credentials")
+        logger.exception(f"Failed to initialize client for provider {provider_type}: {e}")
+        err_msg = str(e).lower()
+        if any(term in err_msg for term in ("auth", "credential", "api_key", "unauthorized", "permission", "invalid key", "secret")):
+            raise HTTPException(status_code=400, detail="Invalid provider credentials")
+        raise HTTPException(status_code=500, detail=f"Provider initialization failed: {e}")
 
     agent = ChatAgent(
         client=client,

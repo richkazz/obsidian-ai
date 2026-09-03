@@ -174,6 +174,28 @@ def test_builtin_tools_schema_generation():
     assert "query" in search_schema["properties"]
 
 
+def test_calculator_ast_evaluation_safety():
+    """Assert calculator uses AST parsing to evaluate valid math and block malicious code."""
+    # Valid expressions
+    res_valid = calculator.func(expression="2 + 3 * (4 - 1)")
+    data_valid = json.loads(res_valid)
+    assert data_valid.get("result") == "11"
+
+    res_func = calculator.func(expression="sqrt(16) + abs(-5)")
+    data_func = json.loads(res_func)
+    assert data_func.get("result") == "9.0"
+
+    # Malicious or unsupported expressions
+    res_exploit = calculator.func(expression="__import__('os').system('ls')")
+    data_exploit = json.loads(res_exploit)
+    assert "error" in data_exploit
+    assert "Calculation error" in data_exploit["error"]
+
+    res_lambda = calculator.func(expression="(lambda: 1)()")
+    data_lambda = json.loads(res_lambda)
+    assert "error" in data_lambda
+
+
 @pytest.mark.asyncio
 async def test_sandbox_tools_maf_function_tools_interface():
     """Assert all 9 sandbox tools generate MAF FunctionTool instances and interface with execution."""
