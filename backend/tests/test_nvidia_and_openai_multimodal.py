@@ -1,7 +1,7 @@
 import os
 import pytest
 from llm.base import LLMMessage
-from llm.nvidia import NVIDIANIMProvider
+from llm.nvidia import NvidiaProvider, NVIDIANIMProvider
 from llm.openai_provider import OpenAIProvider
 from llm.provider_factory import create_provider_from_config
 
@@ -20,6 +20,9 @@ def test_openai_build_payload_extended_parameters():
             "presence_penalty": 0.2,
             "reasoning_effort": "high",
             "top_k": 50,
+            "chat_template_kwargs": {"enable_thinking": True},
+            "reasoning_budget": 16384,
+            "extra_body": {"custom_flag": True},
             "unsupported_key": "ignored",
             "none_key": None,
         },
@@ -52,6 +55,9 @@ def test_openai_build_payload_extended_parameters():
     assert payload["presence_penalty"] == 0.2
     assert payload["reasoning_effort"] == "high"
     assert payload["top_k"] == 50
+    assert payload["chat_template_kwargs"] == {"enable_thinking": True}
+    assert payload["reasoning_budget"] == 16384
+    assert payload["extra_body"] == {"custom_flag": True}
     assert "unsupported_key" not in payload
     assert "none_key" not in payload
 
@@ -62,37 +68,53 @@ def test_openai_build_payload_extended_parameters():
     assert len(payload["messages"][1]["content"]) == 2
 
 
-def test_nvidia_nim_provider_init_and_env_api_key(monkeypatch):
+def test_nvidia_provider_init_and_env_api_key(monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test-123")
 
-    provider = NVIDIANIMProvider(model_id="moonshotai/kimi-k3")
+    provider = NvidiaProvider()
 
     assert provider.api_key == "nvapi-test-123"
-    assert provider.base_url == "https://integrate.api.nvidia.com/v1"
+    assert provider.base_url == "https://integrate.api.nvidia.com"
     assert provider.model_id == "moonshotai/kimi-k3"
 
-    # Direct api_key parameter overrides env
-    provider_custom = NVIDIANIMProvider(
+    # Custom model and key
+    provider_custom = NvidiaProvider(
         api_key="nvapi-override",
-        base_url="http://localhost:8000/v1",
-        model_id="nvidia/nemotron-3-ultra-550b-a55b",
+        base_url="http://localhost:8000",
+        model_id="deepseek-ai/deepseek-v4-pro-0813",
+        config={"chat_template_kwargs": {"thinking": False}},
     )
     assert provider_custom.api_key == "nvapi-override"
-    assert provider_custom.base_url == "http://localhost:8000/v1"
-
-
-def test_nvidia_nim_provider_missing_api_key(monkeypatch):
-    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
-
-    with pytest.raises(ValueError, match="NVIDIA_API_KEY is missing"):
-        NVIDIANIMProvider()
+    assert provider_custom.base_url == "http://localhost:8000"
+    assert provider_custom.model_id == "deepseek-ai/deepseek-v4-pro-0813"
 
 
 @pytest.mark.asyncio
-async def test_nvidia_nim_provider_get_context_length():
-    provider = NVIDIANIMProvider(api_key="test-key")
+async def test_nvidia_provider_list_models_fallback():
+    provider = NvidiaProvider(api_key="invalid-key")
+    models = await provider.list_models()
+    assert len(models) >= 5
+    model_ids = [m["id"] for m in models]
+    assert "nvidia/nemotron-3-ultra-550b-a55b" in model_ids
+    assert "deepseek-ai/deepseek-v4-pro-0813" in model_ids
+    assert "moonshotai/kimi-k3" in model_ids
+
+
+@pytest.mark.asyncio
+async def test_nvidia_provider_known_context_length():
+    provider = NvidiaProvider(
+        api_key="test-key",
+        model_id="nvidia/nemotron-3-super-120b-a12b",
+    )
     ctx_len = await provider.get_context_length()
-    assert ctx_len is None
+    assert ctx_len == 131072
+
+    provider_unknown = NvidiaProvider(
+        api_key="test-key",
+        model_id="unknown-model-id",
+    )
+    ctx_unknown = await provider_unknown.get_context_length()
+    assert ctx_unknown is None
 
 
 def test_provider_factory_nvidia_registration():
@@ -101,13 +123,14 @@ def test_provider_factory_nvidia_registration():
         api_key="nvapi-factory-test",
         base_url=None,
         model_id="deepseek-ai/deepseek-v4-pro-0813",
-        config={"reasoning_effort": "max"},
+        config={"reasoning_budget": 8192},
     )
 
+    assert isinstance(provider, NvidiaProvider)
     assert isinstance(provider, NVIDIANIMProvider)
     assert provider.api_key == "nvapi-factory-test"
-    assert provider.base_url == "https://integrate.api.nvidia.com/v1"
-    assert provider.config.get("reasoning_effort") == "max"
+    assert provider.base_url == "https://integrate.api.nvidia.com"
+    assert provider.config.get("reasoning_budget") == 8192
 
     provider_nim = create_provider_from_config(
         provider_type="nvidia_nim",
@@ -115,7 +138,7 @@ def test_provider_factory_nvidia_registration():
         base_url=None,
         model_id="nvidia/nemotron-3-ultra-550b-a55b",
     )
-    assert isinstance(provider_nim, NVIDIANIMProvider)
+    assert isinstance(provider_nim, NvidiaProvider)
 
 
 def test_openai_url_formatting():

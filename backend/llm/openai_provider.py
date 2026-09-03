@@ -30,6 +30,21 @@ def _strip_think_tags(content: str) -> tuple[str, str]:
 
 class OpenAIProvider(BaseLLMProvider):
 
+    CONFIG_KEYS: tuple[str, ...] = (
+        "temperature",
+        "max_tokens",
+        "top_p",
+        "stop",
+        "seed",
+        "frequency_penalty",
+        "presence_penalty",
+        "reasoning_effort",
+        "top_k",
+        "chat_template_kwargs",
+        "reasoning_budget",
+        "extra_body",
+    )
+
     def __init__(self, api_key=None, base_url=None, model_id="gpt-5.5", config=None):
         super().__init__(api_key, base_url or "https://api.openai.com/", model_id, config)
         self._tool_name_map: dict[str, str] = {}  # sanitized_name -> original_name
@@ -75,19 +90,8 @@ class OpenAIProvider(BaseLLMProvider):
                 "json_schema": {"name": "agent_output", "schema": response_schema, "strict": True},
             }
 
-        allowed_keys = {
-            "temperature",
-            "max_tokens",
-            "top_p",
-            "stop",
-            "seed",
-            "frequency_penalty",
-            "presence_penalty",
-            "reasoning_effort",
-            "top_k",
-        }
         for k, v in self.config.items():
-            if k in allowed_keys and v is not None:
+            if k in self.CONFIG_KEYS and v is not None:
                 payload[k] = v
 
         return payload
@@ -345,7 +349,7 @@ class OpenAIProvider(BaseLLMProvider):
             # Retry after removing tools or stream_options
             async with client.stream(
                 "POST",
-                f"{self.base_url}/v1/chat/completions",
+                self._url("v1/chat/completions"),
                 json=payload,
                 headers=self._headers(),
             ) as response:
@@ -367,7 +371,7 @@ class OpenAIProvider(BaseLLMProvider):
             # Final retry without tools
             async with client.stream(
                 "POST",
-                f"{self.base_url}/v1/chat/completions",
+                self._url("v1/chat/completions"),
                 json=payload,
                 headers=self._headers(),
             ) as response:
