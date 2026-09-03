@@ -41,6 +41,23 @@ def authorize_agent(db, key, agent_id, permission):
         raise HTTPException(403, detail={"code": "AGENT_ACCESS_DENIED", "message": "Application is not allowed to access this agent"})
     return config
 
+@router.get("/agent-api-configs/{agent_id}")
+@router.get("/agents/{agent_id}/api-config")
+def get_agent_api_config(agent_id: int, db: Session = Depends(get_db), user: TokenData = Depends(get_current_user)):
+    require_owner_agent(db, agent_id, user.user_id)
+    config = db.query(AgentAPIConfig).filter(AgentAPIConfig.agent_id == agent_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Agent API configuration not found")
+    return {
+        "agent_id": str(agent_id),
+        "owner_application_id": str(config.owner_application_id) if config.owner_application_id else None,
+        "publication_state": config.publication_state,
+        "input_schema_version_id": str(config.input_schema_version_id) if config.input_schema_version_id else None,
+        "output_schema_version_id": str(config.output_schema_version_id) if config.output_schema_version_id else None,
+        "required_scopes": parse(config.required_scopes_json, []),
+        "rate_limit": config.rate_limit,
+    }
+
 @router.put("/agents/{agent_id}/api-config")
 def configure_agent_api(agent_id: int, body: AgentAPIConfigCreate, db: Session = Depends(get_db), user: TokenData = Depends(get_current_user)):
     require_owner_agent(db, agent_id, user.user_id)
@@ -90,8 +107,24 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
         published = db.query(AgentVersion).filter(AgentVersion.id == config.published_version_id).first()
         if not published or published.version_number != body.version: raise HTTPException(404, detail={"code": "PUBLISHED_VERSION_NOT_FOUND", "request_id": request_id})
     input_schema = db.get(SchemaVersion, config.input_schema_version_id); output_schema = db.get(SchemaVersion, config.output_schema_version_id)
+    if not input_schema or not output_schema:
+        raise HTTPException(422, detail={"code": "SCHEMA_VERSION_NOT_FOUND", "message": "Configured schema version is missing", "request_id": request_id})
     input_errors = validate_json_schema(json.loads(input_schema.canonical_schema_json), body.input)
     if input_errors: raise HTTPException(422, detail={"code": "INPUT_SCHEMA_VALIDATION_FAILED", "request_id": request_id, "details": input_errors})
+
+    output_schema_dict = json.loads(output_schema.canonical_schema_json)
+
+    # Pre-supplied output path for non-LLM/testing integrations
+    if body.output is not None:
+        output = body.output
+        errors = validate_json_schema(output_schema_dict, output)
+        if errors:
+            db.add(APIRequest(request_id=request_id, application_id=int(key.application_id), api_key_id=int(key.api_key_id), agent_id=agent_id, agent_version_id=config.published_version_id, status="failed", error_code="OUTPUT_SCHEMA_VALIDATION_FAILED", duration_ms=int((time.monotonic()-started)*1000))); db.commit()
+            raise HTTPException(status_code=502, detail={"error": {"code": "OUTPUT_SCHEMA_VALIDATION_FAILED", "message": "Supplied output failed schema validation", "request_id": request_id, "details": errors}})
+        db.add(APIRequest(request_id=request_id, application_id=int(key.application_id), api_key_id=int(key.api_key_id), agent_id=agent_id, agent_version_id=config.published_version_id, status="completed", duration_ms=int((time.monotonic()-started)*1000))); db.commit()
+        version = db.get(AgentVersion, config.published_version_id)
+        return {"request_id": request_id, "agent_id": str(agent_id), "agent_version": version.version_number if version else None, "input_schema_version": input_schema.version_number, "output_schema_version": output_schema.version_number, "status": "completed", "output": output}
+
     # Output validation & single bounded repair attempt
     from models import Session as ChatSession, Message
     from services.agent_runner import run_agent_headless
@@ -100,7 +133,6 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
     db.add(session); db.flush(); db.add(Message(session_id=session.id, role="user", content=json.dumps(body.input))); db.commit()
 
     output = None
-    output_schema_dict = json.loads(output_schema.canonical_schema_json)
 
     try:
         raw = await run_agent_headless(session.id, agent_id, db)

@@ -1583,6 +1583,7 @@ def _build_teammates_memory_injection(db, current_agent_id: int, agents_with_pro
 
 async def _build_teammates_memory_injection_mongo(mongo_db, current_agent_id: str, agents_with_providers, user_id: str) -> str:
     """Mongo counterpart of _build_teammates_memory_injection."""
+    from models_mongo import AgentMemoryCollection
     sections = []
     for ag, _ in agents_with_providers:
         ag_id = str(ag["_id"])

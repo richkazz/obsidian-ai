@@ -379,15 +379,6 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
         }
         onSaved?.(updated)
       } else {
-        if (apiExposed && newAgent) {
-          await apiClient.put(`/api/v1/agents/${newAgent.id}/api-config`, {
-            owner_application_id: ownerAppId || null,
-            input_schema_version_id: inputSchemaVerId || null,
-            output_schema_version_id: outputSchemaVerId || null,
-            required_scopes: ["agent:invoke"],
-            rate_limit: apiRateLimit || "60/minute",
-          }).catch(() => {})
-        }
         const newAgent = await apiClient.createAgent({
           name,
           description: description || undefined,
@@ -404,6 +395,15 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
           memory_enabled: memoryEnabled,
           sandbox_enabled: sandboxEnabled,
         })
+        if (apiExposed && newAgent) {
+          await apiClient.put(`/api/v1/agents/${newAgent.id}/api-config`, {
+            owner_application_id: ownerAppId || null,
+            input_schema_version_id: inputSchemaVerId || null,
+            output_schema_version_id: outputSchemaVerId || null,
+            required_scopes: ["agent:invoke"],
+            rate_limit: apiRateLimit || "60/minute",
+          }).catch(() => {})
+        }
         setAgents([...agents, newAgent])
         setSelectedAgent(newAgent.id)
         onSaved?.(newAgent)
