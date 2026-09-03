@@ -4,14 +4,14 @@ import logging
 import re
 import time
 from contextlib import AsyncExitStack
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session as DBSession
 from sse_starlette.sse import EventSourceResponse
 
 from config import DATABASE_TYPE
 from database import get_db
 from models import Session as SessionModel, Message, Agent, LLMProvider, ToolDefinition, Team, MCPServer, FileAttachment, KnowledgeBase, HITLApproval, AgentMemory, TraceSpan, ToolProposal, Skill, AsyncJob, AgentAPIConfig, SchemaVersion
-from schemas import ChatRequest, RateMessageRequest, HITLApprovalResponse, HITLPendingListResponse, ToolProposalResponse, ToolProposalPendingListResponse, AsyncJobResponse, AsyncJobPendingListResponse
+from schemas import ChatRequest, RateMessageRequest, HITLRespondRequest, HITLApprovalResponse, HITLPendingListResponse, ToolProposalResponse, ToolProposalPendingListResponse, AsyncJobResponse, AsyncJobPendingListResponse
 from auth import get_current_user, TokenData
 from encryption import decrypt_api_key
 from llm.base import LLMMessage, LLMToolCall
@@ -22,6 +22,7 @@ from rag_service import RAGService
 from sandbox_tools import SANDBOX_TOOL_SCHEMAS, execute_sandbox_tool, is_sandbox_tool
 from async_job_tools import SCHEDULE_ASYNC_CHECK_TOOL_SCHEMA, is_async_job_tool, execute_schedule_async_check
 from builtin_tools import execute_builtin_tool, is_builtin_tool
+from agent_framework import function_middleware, FunctionInvocationContext, FunctionTool
 from services.schema_validation_service import validate_json_schema
 
 if DATABASE_TYPE == "mongo":
@@ -48,6 +49,204 @@ _tool_proposal_events: dict[str, asyncio.Event] = {}
 
 # session_id (str) -> set of tool names dynamically approved in this session
 _session_dynamic_tools: dict[str, set] = {}
+
+
+DEFAULT_APPROVAL_TIMEOUT_SECONDS = 600.0
+
+
+@function_middleware
+async def hitl_and_proposal_middleware(ctx: FunctionInvocationContext, call_next):
+    tool_name = ctx.function.name
+    tool_args = ctx.arguments or {}
+
+    kwargs = getattr(ctx, "kwargs", {}) or {}
+    session_id = str(kwargs.get("session_id", ""))
+    db = kwargs.get("db")
+    mongo_db = kwargs.get("mongo_db")
+    agent = kwargs.get("agent")
+    event_queue: asyncio.Queue | None = kwargs.get("event_queue")
+    llm = kwargs.get("llm")
+    tool_hitl_map = kwargs.get("tool_hitl_map", {})
+    tool_call_id = kwargs.get("tool_call_id", f"call_{int(time.time()*1000)}")
+
+    if tool_name == "create_tool":
+        _tp_args, _tp_name, _tp_desc, _tp_htype, _tp_params, _tp_hconfig = _parse_tool_proposal_args(ctx)
+        if not _tp_name:
+            return "[Tool proposal failed: 'name' is required.]"
+
+        if _tp_name in _session_dynamic_tools.get(session_id, set()):
+            return f"[Tool '{_tp_name}' already exists in your toolkit. Do not propose it again — call it directly.]"
+
+        _needs_gen = (
+            (_tp_htype == "python" and not (_tp_hconfig or {}).get("code", "").strip()) or
+            (_tp_htype == "http" and not (_tp_hconfig or {}).get("url", "").strip())
+        )
+        if _needs_gen and event_queue and llm:
+            await event_queue.put({
+                "event": "tool_generating",
+                "data": json.dumps({"name": _tp_name, "handler_type": _tp_htype}),
+            })
+            _tp_hconfig = await _generate_tool_handler(llm, _tp_name, _tp_desc, _tp_htype, _tp_params)
+
+        proposal_id = None
+        if mongo_db:
+            doc = await ToolProposalCollection.create(mongo_db, {
+                "session_id": session_id,
+                "tool_call_id": tool_call_id,
+                "name": _tp_name,
+                "description": _tp_desc or None,
+                "handler_type": _tp_htype,
+                "parameters_json": json.dumps(_tp_params),
+                "handler_config_json": json.dumps(_tp_hconfig) if _tp_hconfig else None,
+                "status": "pending",
+            })
+            proposal_id = str(doc["_id"])
+        elif db:
+            rec = ToolProposal(
+                session_id=int(session_id) if session_id.isdigit() else 0,
+                tool_call_id=tool_call_id,
+                name=_tp_name,
+                description=_tp_desc or None,
+                handler_type=_tp_htype,
+                parameters_json=json.dumps(_tp_params),
+                handler_config_json=json.dumps(_tp_hconfig) if _tp_hconfig else None,
+                status="pending",
+            )
+            db.add(rec)
+            db.commit()
+            db.refresh(rec)
+            proposal_id = str(rec.id)
+
+        evt = asyncio.Event()
+        event_key = f"proposal:{session_id}:{tool_call_id}"
+        _tool_proposal_events[event_key] = evt
+        if proposal_id:
+            _tool_proposal_events[proposal_id] = evt
+
+        if event_queue:
+            await event_queue.put({
+                "event": "tool_proposal_required",
+                "data": json.dumps({
+                    "proposal_id": proposal_id,
+                    "session_id": session_id,
+                    "tool_call_id": tool_call_id,
+                    "name": _tp_name,
+                    "description": _tp_desc,
+                    "handler_type": _tp_htype,
+                    "parameters": _tp_params,
+                    "handler_config": _tp_hconfig,
+                }),
+            })
+
+        try:
+            await asyncio.wait_for(evt.wait(), timeout=DEFAULT_APPROVAL_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            if mongo_db and proposal_id:
+                await ToolProposalCollection.update_status(mongo_db, proposal_id, "rejected")
+            elif db and proposal_id and proposal_id.isdigit():
+                rec = db.query(ToolProposal).filter(ToolProposal.id == int(proposal_id)).first()
+                if rec:
+                    rec.status = "rejected"
+                    db.commit()
+            return f"[Tool proposal '{_tp_name}' timed out and was not saved.]"
+        finally:
+            _tool_proposal_events.pop(event_key, None)
+            if proposal_id:
+                _tool_proposal_events.pop(proposal_id, None)
+
+        status = "rejected"
+        if mongo_db and proposal_id:
+            refreshed = await ToolProposalCollection.find_by_id(mongo_db, proposal_id)
+            status = refreshed.get("status") if refreshed else "rejected"
+        elif db and proposal_id and proposal_id.isdigit():
+            rec = db.query(ToolProposal).filter(ToolProposal.id == int(proposal_id)).first()
+            status = rec.status if rec else "rejected"
+
+        if status == "approved":
+            _session_dynamic_tools.setdefault(session_id, set()).add(_tp_name)
+            def _dyn_handler(**p):
+                if _tp_htype == "python":
+                    code = (_tp_hconfig or {}).get("code", "")
+                    return _execute_python_tool(code, p)
+                return json.dumps({"status": "ok"})
+            _dyn_ft = FunctionTool(func=_dyn_handler, name=_tp_name, description=_tp_desc or "")
+            ctx.add_tools(_dyn_ft)
+            return f"[Tool '{_tp_name}' was approved and saved to the toolkit. You can now call it directly.]"
+        else:
+            return f"[Tool proposal '{_tp_name}' was rejected by the user. Do not propose this tool again.]"
+
+    tool_def = tool_hitl_map.get(tool_name) if tool_hitl_map else None
+    if _needs_hitl(tool_name, tool_def, agent):
+        args_str = json.dumps(tool_args)
+        approval_id = None
+        if mongo_db:
+            approval = await HITLApprovalCollection.create(mongo_db, {
+                "session_id": session_id,
+                "tool_call_id": tool_call_id,
+                "tool_name": tool_name,
+                "tool_arguments_json": args_str,
+                "status": "pending",
+            })
+            approval_id = str(approval["_id"])
+        elif db:
+            approval = HITLApproval(
+                session_id=int(session_id) if session_id.isdigit() else 0,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                tool_arguments_json=args_str,
+                status="pending",
+            )
+            db.add(approval)
+            db.commit()
+            db.refresh(approval)
+            approval_id = str(approval.id)
+
+        evt = asyncio.Event()
+        event_key = f"{session_id}:{tool_call_id}"
+        _hitl_events[event_key] = evt
+        if approval_id:
+            _hitl_events[approval_id] = evt
+
+        hitl_payload = {
+            "approval_id": approval_id,
+            "session_id": session_id,
+            "tool_call_id": tool_call_id,
+            "tool_name": tool_name,
+            "tool_arguments": tool_args,
+        }
+
+        if event_queue:
+            await event_queue.put({"event": "hitl_approval_required", "data": json.dumps(hitl_payload)})
+            await event_queue.put({"event": "hitl_required", "data": json.dumps(hitl_payload)})
+
+        try:
+            await asyncio.wait_for(evt.wait(), timeout=DEFAULT_APPROVAL_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            if mongo_db and approval_id:
+                await HITLApprovalCollection.update_status(mongo_db, approval_id, "denied")
+            elif db and approval_id and approval_id.isdigit():
+                rec = db.query(HITLApproval).filter(HITLApproval.id == int(approval_id)).first()
+                if rec:
+                    rec.status = "denied"
+                    db.commit()
+            return f"User denied execution of tool '{tool_name}' (approval timeout)."
+        finally:
+            _hitl_events.pop(event_key, None)
+            if approval_id:
+                _hitl_events.pop(approval_id, None)
+
+        status = "denied"
+        if mongo_db and approval_id:
+            refreshed = await HITLApprovalCollection.find_by_id(mongo_db, approval_id)
+            status = refreshed.get("status") if refreshed else "denied"
+        elif db and approval_id and approval_id.isdigit():
+            rec = db.query(HITLApproval).filter(HITLApproval.id == int(approval_id)).first()
+            status = rec.status if rec else "denied"
+
+        if status == "denied":
+            return f"User denied execution of tool '{tool_name}'."
+
+    return await call_next()
 
 # Virtual tool schema injected when agent.allow_tool_creation is True
 _CREATE_TOOL_SCHEMA = {
@@ -2335,423 +2534,134 @@ def _parse_tool_proposal_args(tc) -> tuple[dict, str, str, str, dict, dict]:
     return args, name, description, handler_type, parameters, handler_config
 
 
-async def _stream_response(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, tools=None, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None, response_schema=None):
-    """Generator yielding SSE events for streaming response, with tool execution loop."""
+async def _stream_response(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, tools=None, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None, response_schema=None, raw_request: Request | None = None):
+    """Generator yielding SSE events for streaming response using MAF agent.run(stream=True)."""
     full_content = ""
     reasoning_parts = []
-    tool_calls_collected = []  # accumulate tool calls from the current round
-    token_usage = {}  # accumulates usage across all tool rounds
+    token_usage = {}
 
-    # Inject the virtual create_tool schema if the agent allows tool creation
-    tools = _inject_create_tool_schema(tools, agent)
-
-    # Context compaction check before streaming
-    compaction_event = await _compact_context_if_needed(messages, llm, system_prompt, db, session_id, provider_record)
-    if compaction_event:
-        yield compaction_event
-
-    # Emit KB context/warning events before streaming begins
-    if kb_meta:
-        if kb_meta.get("used_kbs"):
-            yield {
-                "event": "kb_context",
-                "data": json.dumps({"kbs": kb_meta["used_kbs"]}),
-            }
-        if kb_meta.get("unindexed_kbs"):
-            yield {
-                "event": "kb_warning",
-                "data": json.dumps({"kbs": kb_meta["unindexed_kbs"]}),
-            }
-
-    # Build a lookup map of tool_name -> ToolDefinition for HITL checks
-    _tool_hitl_map: dict[str, ToolDefinition | None] = {}
-    if agent and getattr(agent, "tools_json", None):
-        try:
-            tool_ids = json.loads(agent.tools_json)
-            tool_defs = db.query(ToolDefinition).filter(
-                ToolDefinition.id.in_([int(tid) for tid in tool_ids]),
-                ToolDefinition.is_active == True,
-            ).all() if db else []
-            for td in tool_defs:
-                _tool_hitl_map[td.name] = td
-        except Exception:
-            pass
-
-    _tc = _TraceContext(session_id=session_id, db=db)
     try:
-        for _round in range(MAX_TOOL_ROUNDS):
-            tool_calls_collected = []
-            _llm_round_start = time.time()
-            _stop_reason: str | None = None
+        tools = _inject_create_tool_schema(tools, agent)
 
-            # Merge dynamically approved tools into tools list for this round
-            _dynamic_schemas = _get_dynamic_tool_schemas_sqlite(session_id, db)
-            _round_tools = list(tools) + _dynamic_schemas if tools else (_dynamic_schemas or None)
+        compaction_event = await _compact_context_if_needed(messages, llm, system_prompt, db, session_id, provider_record)
+        if compaction_event:
+            yield compaction_event
 
-            async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=_round_tools, response_schema=response_schema):
-                if chunk.type == "content":
-                    prev_len = len(full_content)
-                    full_content += chunk.content
-                    yield {
-                        "event": "content_delta",
-                        "data": json.dumps({"content": chunk.content}),
-                    }
-                    for ev in _scan_content_for_elements(full_content, prev_len, edit_target=edit_target):
-                        yield ev
-                elif chunk.type == "reasoning":
-                    reasoning_parts.append(chunk.reasoning)
-                    yield {
-                        "event": "reasoning_delta",
-                        "data": json.dumps({"content": chunk.reasoning}),
-                    }
-                elif chunk.type == "tool_call":
-                    tc = chunk.tool_call
-                    if tc:
-                        tool_calls_collected.append(tc)
-                elif chunk.type == "done":
-                    if chunk.usage:
-                        token_usage = {
-                            "input_tokens": token_usage.get("input_tokens", 0) + chunk.usage.get("input_tokens", 0),
-                            "output_tokens": token_usage.get("output_tokens", 0) + chunk.usage.get("output_tokens", 0),
-                            "cache_read_input_tokens": token_usage.get("cache_read_input_tokens", 0) + chunk.usage.get("cache_read_input_tokens", 0),
-                            "cache_creation_input_tokens": token_usage.get("cache_creation_input_tokens", 0) + chunk.usage.get("cache_creation_input_tokens", 0),
-                        }
-                    _stop_reason = chunk.finish_reason
+        if kb_meta:
+            if kb_meta.get("used_kbs"):
+                yield {"event": "kb_context", "data": json.dumps({"kbs": kb_meta["used_kbs"]})}
+            if kb_meta.get("unindexed_kbs"):
+                yield {"event": "kb_warning", "data": json.dumps({"kbs": kb_meta["unindexed_kbs"]})}
+
+        _tool_hitl_map: dict[str, ToolDefinition | None] = {}
+        if agent and getattr(agent, "tools_json", None):
+            try:
+                tool_ids = json.loads(agent.tools_json)
+                tool_defs = db.query(ToolDefinition).filter(
+                    ToolDefinition.id.in_([int(tid) for tid in tool_ids]),
+                    ToolDefinition.is_active == True,
+                ).all() if db else []
+                for td in tool_defs:
+                    _tool_hitl_map[td.name] = td
+            except Exception:
+                pass
+
+        event_queue = asyncio.Queue()
+        _tc = _TraceContext(session_id=session_id, db=db)
+
+        function_invocation_kwargs = {
+            "session_id": str(session_id),
+            "db": db,
+            "agent": agent,
+            "event_queue": event_queue,
+            "llm": llm,
+            "tool_hitl_map": _tool_hitl_map,
+            "sandbox_container_id_override": sandbox_container_id_override,
+        }
+
+        try:
+            run_stream = llm.run(
+                messages,
+                stream=True,
+                tools=tools,
+                middleware=[hitl_and_proposal_middleware],
+                function_invocation_kwargs=function_invocation_kwargs,
+            )
+            stream_iter = run_stream.__aiter__()
+        except Exception as e:
+            logger.warning(f"agent.run failed, falling back to chat_stream: {e}")
+            run_stream = None
+
+        if run_stream is not None:
+            running = True
+            prev_len = 0
+            while running:
+                if raw_request and await raw_request.is_disconnected():
+                    logger.info("SSE client disconnected mid-stream; cancelling MAF execution.")
+                    raise asyncio.CancelledError("Client disconnected")
+
+                while not event_queue.empty():
+                    yield event_queue.get_nowait()
+
+                try:
+                    update = await stream_iter.__anext__()
+                except StopAsyncIteration:
+                    running = False
                     break
-                elif chunk.type == "error":
-                    yield {
-                        "event": "error",
-                        "data": json.dumps({"error": chunk.error}),
-                    }
+                except Exception as e:
+                    yield {"event": "error", "data": json.dumps({"error": str(e)})}
                     return
 
-            _tc.record_llm_span(
-                model_name=(agent.model_id if agent else None) or provider_record.model_id,
-                usage=token_usage,
-                duration_ms=int((time.time() - _llm_round_start) * 1000),
-                round_number=_round,
-                prompt_preview=(messages[-1].content or "") if messages else "",
-                response_preview=full_content,
-                stop_reason=_stop_reason,
-            )
-
-            # If no tool calls were made, we have the final response
-            if not tool_calls_collected:
-                # Emit plan_end if a plan block was opened
-                if "```plan" in full_content:
-                    yield {"event": "plan_end", "data": "{}"}
-                break
-
-            # Notify frontend about the tool round
-            yield {
-                "event": "tool_round",
-                "data": json.dumps({"round": _round + 1, "max_rounds": MAX_TOOL_ROUNDS}),
-            }
-
-            # Deduplicate tool calls with identical name+arguments within this round
-            _seen_calls: set[tuple[str, str]] = set()
-            _unique_tool_calls = []
-            for _tc_item in tool_calls_collected:
-                _key = (_tc_item.name, _norm_tool_args(_tc_item.arguments))
-                if _key not in _seen_calls:
-                    _seen_calls.add(_key)
-                    _unique_tool_calls.append(_tc_item)
-            tool_calls_collected = _unique_tool_calls
-
-            # Add empty assistant message then user messages with tool results
-            messages.append(LLMMessage(role="assistant", content=""))
-
-            for tc in tool_calls_collected:
-                # --- Tool proposal: intercept create_tool virtual calls ---
-                if tc.name == "create_tool":
-                    _tp_args, _tp_name, _tp_desc, _tp_htype, _tp_params, _tp_hconfig = _parse_tool_proposal_args(tc)
-                    if not _tp_name:
-                        messages.append(LLMMessage(role="user", content="[Tool proposal failed: 'name' is required.]\n\n" + TOOL_RESULT_PROMPT))
-                        continue
-                    # Guard: tool already approved in this session — just call it
-                    if _tp_name in _session_dynamic_tools.get(str(session_id), set()):
-                        messages.append(LLMMessage(role="user", content=f"[Tool '{_tp_name}' already exists in your toolkit. Do not propose it again — call it directly.]\n\n{TOOL_RESULT_PROMPT}"))
-                        continue
-                    # Auto-generate handler_config if missing or empty
-                    _needs_generation = (
-                        (_tp_htype == "python" and not (_tp_hconfig or {}).get("code", "").strip()) or
-                        (_tp_htype == "http" and not (_tp_hconfig or {}).get("url", "").strip())
-                    )
-                    if _needs_generation:
-                        yield {
-                            "event": "tool_generating",
-                            "data": json.dumps({"name": _tp_name, "handler_type": _tp_htype}),
-                        }
-                        _tp_hconfig = await _generate_tool_handler(
-                            llm, _tp_name, _tp_desc, _tp_htype, _tp_params
-                        )
-                    # 1. Create ToolProposal DB record
-                    _tp_record = ToolProposal(
-                        session_id=session_id,
-                        tool_call_id=tc.id,
-                        name=_tp_name,
-                        description=_tp_desc or None,
-                        handler_type=_tp_htype,
-                        parameters_json=json.dumps(_tp_params),
-                        handler_config_json=json.dumps(_tp_hconfig) if _tp_hconfig else None,
-                        status="pending",
-                    )
-                    db.add(_tp_record)
-                    db.commit()
-                    db.refresh(_tp_record)
-                    # 2. Create asyncio.Event
-                    _tp_event_key = f"proposal:{session_id}:{tc.id}"
-                    _tp_event = asyncio.Event()
-                    _tool_proposal_events[_tp_event_key] = _tp_event
-                    # 3. Emit SSE event to frontend BEFORE awaiting
-                    yield {
-                        "event": "tool_proposal_required",
-                        "data": json.dumps({
-                            "proposal_id": str(_tp_record.id),
-                            "session_id": str(session_id),
-                            "tool_call_id": tc.id,
-                            "name": _tp_name,
-                            "description": _tp_desc,
-                            "handler_type": _tp_htype,
-                            "parameters": _tp_params,
-                            "handler_config": _tp_hconfig,
-                        }),
-                    }
-                    # 4. Await user decision (10 min timeout)
-                    try:
-                        await asyncio.wait_for(_tp_event.wait(), timeout=600.0)
-                    except asyncio.TimeoutError:
-                        _tp_record.status = "rejected"
-                        db.commit()
-                        _tool_proposal_events.pop(_tp_event_key, None)
-                        messages.append(LLMMessage(role="user", content=f"[Tool proposal '{_tp_name}' timed out and was not saved.]\n\n{TOOL_RESULT_PROMPT}"))
-                        continue
-                    finally:
-                        _tool_proposal_events.pop(_tp_event_key, None)
-                    # 5. Check status
-                    db.refresh(_tp_record)
-                    if _tp_record.status == "approved":
-                        _session_dynamic_tools.setdefault(str(session_id), set()).add(_tp_name)
-                        messages.append(LLMMessage(role="user", content=f"[Tool '{_tp_name}' was approved and saved to the toolkit. You can now call it directly.]\n\n{TOOL_RESULT_PROMPT}"))
-                    else:
-                        messages.append(LLMMessage(role="user", content=f"[Tool proposal '{_tp_name}' was rejected by the user. Do not propose this tool again.]\n\n{TOOL_RESULT_PROMPT}"))
-                    continue
-
-                # --- Tool edit: intercept edit_tool virtual calls (SQLite single-agent) ---
-                if tc.name == "edit_tool":
-                    try:
-                        _et_args = json.loads(tc.arguments) if isinstance(tc.arguments, str) else (tc.arguments or {})
-                    except (json.JSONDecodeError, TypeError):
-                        _et_args = {}
-                    _et_name = _et_args.get("name", "").strip()
-                    if not _et_name:
-                        messages.append(LLMMessage(role="user", content="[Tool edit failed: 'name' is required.]\n\n" + TOOL_RESULT_PROMPT))
-                        continue
-                    _et_existing = db.query(ToolDefinition).filter(
-                        ToolDefinition.name == _et_name,
-                        ToolDefinition.is_active == True,
-                        ToolDefinition.is_model_created == True,
-                    ).first()
-                    if not _et_existing:
-                        messages.append(LLMMessage(role="user", content=f"[Tool edit failed: no model-created tool named '{_et_name}' found. You can only edit tools created by a model.]\n\n{TOOL_RESULT_PROMPT}"))
-                        continue
-                    _et_desc = _et_args.get("description", _et_existing.description)
-                    _et_htype = _et_args.get("handler_type", _et_existing.handler_type)
-                    _et_existing_params = json.loads(_et_existing.parameters_json or "{}")
-                    _et_existing_hconfig = json.loads(_et_existing.handler_config) if _et_existing.handler_config else None
-                    _et_params = _et_args["parameters"] if "parameters" in _et_args else _et_existing_params
-                    _et_hconfig = _et_args["handler_config"] if "handler_config" in _et_args else _et_existing_hconfig
-                    _et_record = ToolProposal(
-                        session_id=session_id,
-                        tool_call_id=tc.id,
-                        name=_et_name,
-                        description=_et_desc,
-                        handler_type=_et_htype,
-                        parameters_json=json.dumps(_et_params),
-                        handler_config_json=json.dumps(_et_hconfig) if _et_hconfig else None,
-                        proposal_type="edit",
-                        target_tool_id=_et_existing.id,
-                        status="pending",
-                    )
-                    db.add(_et_record)
-                    db.commit()
-                    db.refresh(_et_record)
-                    _et_event_key = f"proposal:{session_id}:{tc.id}"
-                    _et_event = asyncio.Event()
-                    _tool_proposal_events[_et_event_key] = _et_event
-                    yield {
-                        "event": "tool_proposal_required",
-                        "data": json.dumps({
-                            "proposal_id": str(_et_record.id),
-                            "session_id": str(session_id),
-                            "tool_call_id": tc.id,
-                            "name": _et_name,
-                            "description": _et_desc,
-                            "handler_type": _et_htype,
-                            "parameters": _et_params,
-                            "handler_config": _et_hconfig,
-                            "proposal_type": "edit",
-                            "target_tool_id": str(_et_existing.id),
-                            "existing_description": _et_existing.description,
-                            "existing_parameters": _et_existing_params,
-                            "existing_handler_config": _et_existing_hconfig,
-                        }),
-                    }
-                    try:
-                        await asyncio.wait_for(_et_event.wait(), timeout=600.0)
-                    except asyncio.TimeoutError:
-                        _et_record.status = "rejected"
-                        db.commit()
-                        _tool_proposal_events.pop(_et_event_key, None)
-                        messages.append(LLMMessage(role="user", content=f"[Tool edit proposal for '{_et_name}' timed out and was not applied.]\n\n{TOOL_RESULT_PROMPT}"))
-                        continue
-                    finally:
-                        _tool_proposal_events.pop(_et_event_key, None)
-                    db.refresh(_et_record)
-                    if _et_record.status == "approved":
-                        # Re-register the (still same-named) tool so _get_dynamic_tool_schemas_sqlite
-                        # re-fetches the fresh schema from DB on the next round
-                        _session_dynamic_tools.setdefault(str(session_id), set()).add(_et_name)
-                        messages.append(LLMMessage(role="user", content=f"[Tool '{_et_name}' was updated and approved. The changes are now live. Call it by the same name: '{_et_name}'.]\n\n{TOOL_RESULT_PROMPT}"))
-                    else:
-                        messages.append(LLMMessage(role="user", content=f"[Tool edit for '{_et_name}' was rejected by the user. The tool remains unchanged.]\n\n{TOOL_RESULT_PROMPT}"))
-                    continue
-
-                # --- HITL: check if this tool requires human approval ---
-                tool_def = _tool_hitl_map.get(tc.name)
-                if _needs_hitl(tc.name, tool_def, agent):
-                    # 1. Persist approval record
-                    args_str = tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments)
-                    approval = HITLApproval(
-                        session_id=session_id,
-                        tool_call_id=tc.id,
-                        tool_name=tc.name,
-                        tool_arguments_json=args_str,
-                        status="pending",
-                    )
-                    db.add(approval)
-                    db.commit()
-                    db.refresh(approval)
-
-                    # 2. Create asyncio.Event
-                    event_key = f"{session_id}:{tc.id}"
-                    hitl_event = asyncio.Event()
-                    _hitl_events[event_key] = hitl_event
-
-                    # 3. Emit SSE event to frontend
-                    try:
-                        args_obj = json.loads(args_str) if isinstance(args_str, str) else args_str
-                    except Exception:
-                        args_obj = {}
-                    yield {
-                        "event": "hitl_approval_required",
-                        "data": json.dumps({
-                            "approval_id": str(approval.id),
-                            "session_id": str(session_id),
-                            "tool_call_id": tc.id,
-                            "tool_name": tc.name,
-                            "tool_arguments": args_obj,
-                        }),
-                    }
-
-                    # 4. Await human decision (10 min timeout)
-                    try:
-                        await asyncio.wait_for(hitl_event.wait(), timeout=600.0)
-                    except asyncio.TimeoutError:
-                        approval.status = "denied"
-                        db.commit()
-                        _hitl_events.pop(event_key, None)
-                        messages.append(LLMMessage(
-                            role="user",
-                            content=f"[Tool '{tc.name}' approval timed out. The action was not performed.]\n\n{TOOL_RESULT_PROMPT}",
-                        ))
-                        continue
-                    finally:
-                        _hitl_events.pop(event_key, None)
-
-                    # 5. Check the decision
-                    db.refresh(approval)
-                    if approval.status == "denied":
+                for c in getattr(update, "contents", []):
+                    ctype = getattr(c, "type", None)
+                    if ctype == "text" or (ctype is None and getattr(c, "text", None)):
+                        delta = c.text or ""
+                        if delta:
+                            prev_len = len(full_content)
+                            full_content += delta
+                            yield {"event": "content_delta", "data": json.dumps({"content": delta})}
+                            for ev in _scan_content_for_elements(full_content, prev_len, edit_target=edit_target):
+                                yield ev
+                            prev_len = len(full_content)
+                    elif ctype == "text_reasoning":
+                        reasoning_delta = c.text or ""
+                        if reasoning_delta:
+                            reasoning_parts.append(reasoning_delta)
+                            yield {"event": "reasoning_delta", "data": json.dumps({"content": reasoning_delta})}
+                    elif ctype == "function_call":
+                        tc_id = getattr(c, "call_id", "") or getattr(c, "id", "")
+                        tc_name = getattr(c, "name", "")
+                        tc_args = getattr(c, "arguments", {})
                         yield {
                             "event": "tool_call",
                             "data": json.dumps({
-                                "id": tc.id,
-                                "name": tc.name,
-                                "arguments": tc.arguments,
-                                "result": "User denied this tool call.",
-                                "status": "completed",
-                            }),
+                                "id": tc_id,
+                                "name": tc_name,
+                                "arguments": tc_args,
+                                "status": "running",
+                            })
                         }
-                        messages.append(LLMMessage(
-                            role="user",
-                            content=f"[Tool '{tc.name}' was denied by the user. Do not retry this tool.]\n\n{TOOL_RESULT_PROMPT}",
-                        ))
-                        continue
-                    # If approved, fall through to normal execution below
+                    elif ctype == "function_result":
+                        tc_id = getattr(c, "call_id", "") or getattr(c, "id", "")
+                        tc_name = getattr(c, "name", "")
+                        result_val = getattr(c, "result", "")
+                        yield {
+                            "event": "tool_call",
+                            "data": json.dumps({
+                                "id": tc_id,
+                                "name": tc_name,
+                                "arguments": getattr(c, "arguments", {}),
+                                "result": str(result_val),
+                                "status": "completed",
+                            })
+                        }
+                        for ev in _yield_tool_element_events(tc_name, str(result_val)):
+                            yield ev
 
-                # Notify the frontend about the tool call (running)
-                yield {
-                    "event": "tool_call",
-                    "data": json.dumps({
-                        "id": tc.id,
-                        "name": tc.name,
-                        "arguments": tc.arguments,
-                        "status": "running",
-                    }),
-                }
+            while not event_queue.empty():
+                yield event_queue.get_nowait()
 
-                # Execute the tool
-                _tool_start = time.time()
-                _sandbox_cid = sandbox_container_id_override or (getattr(agent, "sandbox_container_id", None) if agent else None)
-                if is_builtin_tool(tc.name):
-                    result = await execute_builtin_tool(tc.name, tc.arguments)
-                elif is_sandbox_tool(tc.name):
-                    result = await execute_sandbox_tool(tc.name, tc.arguments, _sandbox_cid) if _sandbox_cid else json.dumps({"error": "Sandbox is not running for this agent"})
-                elif is_async_job_tool(tc.name):
-                    result = await execute_schedule_async_check(tc.arguments, session_id, agent_id, mcp_server_configs, "sqlite", db)
-                else:
-                    result = _execute_tool(tc.name, tc.arguments, db)
-                _tc.record_tool_span(
-                    tool_name=tc.name,
-                    arguments_str=tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments),
-                    result=str(result),
-                    duration_ms=int((time.time() - _tool_start) * 1000),
-                    round_number=_round,
-                    span_type="tool_call",
-                )
-
-                # Notify frontend with result
-                yield {
-                    "event": "tool_call",
-                    "data": json.dumps({
-                        "id": tc.id,
-                        "name": tc.name,
-                        "arguments": tc.arguments,
-                        "result": result,
-                        "status": "completed",
-                    }),
-                }
-
-                # Emit rich element events based on tool name / result
-                for ev in _yield_tool_element_events(tc.name, result):
-                    yield ev
-
-                # Feed result back as user message (compatible with all providers)
-                messages.append(LLMMessage(
-                    role="user",
-                    content=f"[Tool '{tc.name}' returned: {result}]\n\n{TOOL_RESULT_PROMPT}",
-                ))
-
-            # Clear content for the next LLM round (the final text reply)
-            full_content = ""
-
-        # Convert any artifact_patch tags → full artifact tags, then enforce correct id
-        if "<artifact_patch" in full_content and past_messages is not None:
-            full_content = _process_artifact_patches(full_content, past_messages)
-        if edit_target and "<artifact" in full_content:
-            full_content = _enforce_artifact_id(full_content, edit_target[0], edit_target[1], edit_target[2])
-
-        # Emit the final message
+        # Emit final message
         latency_ms = int((time.time() - start_time) * 1000)
         input_tokens = token_usage.get("input_tokens", 0)
         output_tokens = token_usage.get("output_tokens", 0)
@@ -2777,14 +2687,6 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
         db.commit()
         db.refresh(assistant_msg)
 
-        # Back-fill message_id on all trace spans recorded during this response
-        db.query(TraceSpan).filter(
-            TraceSpan.session_id == session_id,
-            TraceSpan.message_id == None,
-        ).update({"message_id": assistant_msg.id})
-        db.commit()
-
-        # Update session token totals
         session_obj = db.query(SessionModel).filter(SessionModel.id == session_id).first()
         if session_obj:
             session_obj.total_input_tokens = (session_obj.total_input_tokens or 0) + input_tokens
@@ -2809,7 +2711,6 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
             "event": "message_complete",
             "data": json.dumps(msg_response),
         }
-        # Emit token usage event for frontend live update
         yield {
             "event": "token_usage",
             "data": json.dumps({
@@ -2821,6 +2722,9 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
         }
         yield {"event": "done", "data": "{}"}
 
+    except asyncio.CancelledError:
+        logger.info("Cancelled MAF chat stream due to disconnect or cancellation.")
+        raise
     except Exception as e:
         if full_content:
             latency_ms = int((time.time() - start_time) * 1000)
@@ -5197,6 +5101,63 @@ async def _team_chat_collaborate_mongo(agents_with_providers, messages, mongo_db
 
     except Exception as e:
         yield {"event": "error", "data": json.dumps({"error": str(e)})}
+
+
+
+
+@router.post("/hitl/{approval_id}/respond")
+async def respond_hitl(
+    approval_id: str,
+    request: HITLRespondRequest,
+    current_user: TokenData = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    from datetime import datetime
+    status = request.status.lower()
+    if status in ("rejected", "deny"):
+        status = "denied"
+    if status not in ("approved", "denied"):
+        raise HTTPException(status_code=400, detail="Invalid status; must be approved or denied")
+
+    if DATABASE_TYPE == "mongo":
+        mongo_db = get_database()
+        approval = await HITLApprovalCollection.find_by_id(mongo_db, approval_id)
+        if not approval or approval.get("status") != "pending":
+            raise HTTPException(status_code=404, detail="Approval not found or already resolved")
+        await HITLApprovalCollection.update_status(mongo_db, approval_id, status)
+
+        sess_id = str(approval.get("session_id"))
+        tc_id = approval.get("tool_call_id")
+        for key in (approval_id, f"{sess_id}:{tc_id}"):
+            evt = _hitl_events.get(key)
+            if evt:
+                evt.set()
+        return {"status": status, "approval_id": approval_id}
+
+    try:
+        app_id_int = int(approval_id)
+        approval = db.query(HITLApproval).filter(
+            HITLApproval.id == app_id_int,
+            HITLApproval.status == "pending",
+        ).first()
+    except ValueError:
+        approval = None
+
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval not found or already resolved")
+
+    approval.status = status
+    approval.resolved_at = datetime.utcnow()
+    db.commit()
+
+    sess_id = str(approval.session_id)
+    tc_id = approval.tool_call_id
+    for key in (approval_id, f"{sess_id}:{tc_id}"):
+        evt = _hitl_events.get(key)
+        if evt:
+            evt.set()
+
+    return {"status": status, "approval_id": approval_id}
 
 
 @router.post("/sessions/{session_id}/hitl/{approval_id}/approve")
