@@ -1,5 +1,5 @@
 """
-Built-in tools — always available to every agent, no configuration required.
+Built-in tool implementations. Agents must explicitly configure these tools.
 
 Currently provides:
   - web_search   : Tavily Search API (requires TAVILY_API_KEY in .env)

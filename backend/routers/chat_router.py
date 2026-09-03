@@ -21,7 +21,7 @@ from file_storage import FileStorageService
 from rag_service import RAGService
 from sandbox_tools import SANDBOX_TOOL_SCHEMAS, execute_sandbox_tool, is_sandbox_tool
 from async_job_tools import SCHEDULE_ASYNC_CHECK_TOOL_SCHEMA, is_async_job_tool, execute_schedule_async_check
-from builtin_tools import BUILTIN_TOOL_SCHEMAS, execute_builtin_tool, is_builtin_tool
+from builtin_tools import execute_builtin_tool, is_builtin_tool
 from services.schema_validation_service import validate_json_schema
 
 if DATABASE_TYPE == "mongo":
@@ -1139,8 +1139,8 @@ async def _execute_tool_mongo(tool_name: str, arguments_str: str, mongo_db) -> s
 
 def _build_tools_for_llm(agent, db) -> list[dict] | None:
     """Retrieve agent's tool definitions and format them for the LLM (OpenAI-compatible format).
-    Built-in tools (web_search, fetch_url) are always included."""
-    tools: list[dict] = list(BUILTIN_TOOL_SCHEMAS)
+    Only tools explicitly configured on the agent are included."""
+    tools: list[dict] = []
 
     if agent.tools_json:
         try:
@@ -1154,8 +1154,7 @@ def _build_tools_for_llm(agent, db) -> list[dict] | None:
                 ToolDefinition.is_active == True,
             ).all()
 
-            builtin_names = {t["function"]["name"] for t in BUILTIN_TOOL_SCHEMAS}
-            seen_names = set(builtin_names)
+            seen_names: set[str] = set()
             for td in tool_defs:
                 if td.name in seen_names:
                     continue  # skip builtins-shadowing and duplicate-named tool defs (keep first occurrence)
@@ -3787,10 +3786,9 @@ async def _team_chat_collaborate(agents_with_providers, messages, db, session_id
 
 async def _build_tools_for_llm_mongo(agent, mongo_db) -> list[dict] | None:
     """Retrieve agent's tool definitions from MongoDB and format them for the LLM.
-    Built-in tools (web_search, fetch_url) are always included."""
-    tools: list[dict] = list(BUILTIN_TOOL_SCHEMAS)
-    builtin_names = {t["function"]["name"] for t in BUILTIN_TOOL_SCHEMAS}
-    seen_names = set(builtin_names)
+    Only tools explicitly configured on the agent are included."""
+    tools: list[dict] = []
+    seen_names: set[str] = set()
 
     tools_raw = agent.get("tools_json") or agent.get("tools")
     if tools_raw:
