@@ -21,6 +21,7 @@ import { usePlaygroundStore } from "@/stores/playground-store"
 import { apiClient } from "@/lib/api-client"
 import { cn } from "@/lib/utils"
 import type { Artifact } from "@/types/playground"
+import { toast } from "sonner"
 
 interface ChatInputProps {
   onSend: (message: string, files?: FileUIPart[], structured?: boolean) => void
@@ -213,6 +214,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputPr
           multiple
           maxFiles={10}
           maxFileSize={20 * 1024 * 1024}
+          onError={({ message }) => toast.error(message)}
           onSubmit={({ text, files }) => {
             const trimmed = text.trim()
             if ((!trimmed && files.length === 0) || disabled) return

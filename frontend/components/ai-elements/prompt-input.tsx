@@ -379,7 +379,7 @@ export type PromptInputProps = Omit<
   // bytes
   maxFileSize?: number;
   onError?: (err: {
-    code: "max_files" | "max_file_size" | "accept";
+    code: "max_files" | "max_file_size" | "accept" | "attachment_conversion";
     message: string;
   }) => void;
   onSubmit: (
@@ -777,10 +777,12 @@ export const PromptInput = ({
           files.map(async ({ id: _id, ...item }) => {
             if (item.url?.startsWith("blob:")) {
               const dataUrl = await convertBlobUrlToDataUrl(item.url);
-              // If conversion failed, keep the original blob URL
+              if (!dataUrl) {
+                throw new Error(`Failed to prepare attachment "${item.filename || "file"}"`);
+              }
               return {
                 ...item,
-                url: dataUrl ?? item.url,
+                url: dataUrl,
               };
             }
             return item;
@@ -807,11 +809,14 @@ export const PromptInput = ({
             controller.textInput.clear();
           }
         }
-      } catch {
-        // Don't clear on error - user may want to retry
+      } catch (error) {
+        onError?.({
+          code: "attachment_conversion",
+          message: error instanceof Error ? error.message : "Failed to prepare attachment.",
+        });
       }
     },
-    [usingProvider, controller, files, onSubmit, clear]
+    [usingProvider, controller, files, onSubmit, clear, onError]
   );
 
   // Render with or without local provider

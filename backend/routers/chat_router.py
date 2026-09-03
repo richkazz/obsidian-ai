@@ -1328,6 +1328,11 @@ def _process_attachments_sqlite(attachments, session_id: int, user_id: int, db):
         file_type = _classify_file(att.media_type, att.filename)
         if not att.data:
             continue
+        if att.data.startswith("blob:"):
+            raise HTTPException(
+                status_code=422,
+                detail=f'Attachment "{att.filename}" was not uploaded correctly; please attach it again.',
+            )
 
         try:
             file_bytes, _ = FileStorageService.decode_data_uri(att.data)
@@ -1383,6 +1388,11 @@ async def _process_attachments_mongo(attachments, session_id: str, user_id: str,
         file_type = _classify_file(att.media_type, att.filename)
         if not att.data:
             continue
+        if att.data.startswith("blob:"):
+            raise HTTPException(
+                status_code=422,
+                detail=f'Attachment "{att.filename}" was not uploaded correctly; please attach it again.',
+            )
 
         try:
             file_bytes, _ = FileStorageService.decode_data_uri(att.data)
