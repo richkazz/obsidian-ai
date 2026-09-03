@@ -29,7 +29,7 @@ def setup_data():
         token = create_access_token({"user_id": str(user.id), "username": user.username, "role": user.role, "token_type": "user"})
 
         # Create application
-        app_obj = Application(user_id=user.id, name="Test App", status="active", default_scopes_json='["agent:invoke"]')
+        app_obj = Application(user_id=user.id, name="Test App", status="active", default_scopes_json='["agent:invoke", "agent:read"]')
         db.add(app_obj)
         db.flush()
 
@@ -42,7 +42,7 @@ def setup_data():
             name="Test Key",
             key_prefix=prefix,
             secret_hash=hash_api_key(secret),
-            scopes_json=json.dumps(["agent:invoke"])
+            scopes_json=json.dumps(["agent:invoke", "agent:read"])
         )
         db.add(key_record)
         db.flush()
@@ -157,6 +157,49 @@ def test_presupplied_output_validation_failure(setup_data):
     data = res.json()
     assert data["detail"]["error"]["code"] == "OUTPUT_SCHEMA_VALIDATION_FAILED"
 
+def test_external_session_is_application_bound(setup_data):
+    from models import Session, Message, Application, APIKey
+    from services.api_key_service import hash_api_key
+    import json
+    db = next(get_db())
+    try:
+        session = Session(
+            user_id=setup_data["user"].id,
+            application_id=setup_data["app"].id,
+            title="Bug report",
+            entity_type="agent",
+            entity_id=setup_data["agent"].id,
+        )
+        db.add(session)
+        db.flush()
+        db.add(Message(session_id=session.id, role="user", content="checkout screenshot"))
+        db.commit()
+        response = client.get(
+            f"/api/v1/agent-sessions/{session.id}/messages",
+            headers={"Authorization": f"Bearer {setup_data['api_key']}"},
+        )
+        assert response.status_code == 200
+        assert response.json()["messages"][0]["content"] == "checkout screenshot"
+
+        other_app = Application(user_id=setup_data["user"].id, name="Other", status="active")
+        db.add(other_app)
+        other_prefix, other_secret, other_full_key = generate_api_key()
+        db.add(APIKey(
+            application_id=other_app.id,
+            name="Other Key",
+            key_prefix=other_prefix,
+            secret_hash=hash_api_key(other_secret),
+            scopes_json=json.dumps(["agent:read"]),
+        ))
+        db.commit()
+        response = client.get(
+            f"/api/v1/agent-sessions/{session.id}/messages",
+            headers={"Authorization": f"Bearer {other_full_key}"},
+        )
+        assert response.status_code == 404
+    finally:
+        db.close()
+
 def test_meta_schema_validation(setup_data):
     token = setup_data["user_token"]
 
@@ -173,3 +216,14 @@ def test_meta_schema_validation(setup_data):
     )
     assert res.status_code == 422
     assert "INVALID_JSON_SCHEMA" in res.text
+
+def test_external_attachment_requires_data_or_url():
+    from pydantic import ValidationError
+    from schemas import ExternalInvokeRequest
+
+    with pytest.raises(ValidationError):
+        ExternalInvokeRequest(input={"query": "hello"}, attachments=[{
+            "filename": "empty.png",
+            "media_type": "image/png",
+            "file_type": "image",
+        }])

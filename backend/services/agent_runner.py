@@ -207,7 +207,15 @@ async def _run_headless_sqlite(session_id: int, agent_id: int, db, response_sche
     messages = []
     for msg in past_messages:
         if msg.role in ("user", "assistant"):
-            messages.append(LLMMessage(role=msg.role, content=msg.content or ""))
+            content = msg.content or ""
+            if isinstance(content, str) and content.startswith("[{\"type\":"):
+                try:
+                    parsed_content = json.loads(content)
+                    if isinstance(parsed_content, list):
+                        content = parsed_content
+                except json.JSONDecodeError:
+                    pass
+            messages.append(LLMMessage(role=msg.role, content=content))
 
     if not messages:
         return None

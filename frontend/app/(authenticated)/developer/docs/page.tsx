@@ -58,6 +58,7 @@ export default function APIDocsPage() {
 
   const backendEndpoint = process.env.NEXT_PUBLIC_BACKEND_URL || (typeof window !== "undefined" ? window.location.origin : "")
   const invocationUrl = `${backendEndpoint}/api/v1/agent-invocations/<AGENT_ID>`
+  const sessionUrl = `${backendEndpoint}/api/v1/agent-sessions/<AGENT_ID>`
   const curlExample = `curl -X POST "${invocationUrl}" \\
   -H "Authorization: Bearer oba_<prefix>.<secret>" \\
   -H "Content-Type: application/json" \\
@@ -67,6 +68,27 @@ export default function APIDocsPage() {
     },
     "session_id": "<SESSION_ID>"
   }'`
+
+  const sessionExample = `curl -X POST "${sessionUrl}" \\
+  -H "Authorization: Bearer oba_<prefix>.<secret>"
+
+# Continue the same application-scoped conversation
+curl -X POST "${invocationUrl}" \\
+  -H "Authorization: Bearer oba_<prefix>.<secret>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "session_id": "<SESSION_ID>",
+    "input": {"title": "Checkout error", "steps": ["submit payment"]},
+    "attachments": [{
+      "filename": "checkout-error.png",
+      "media_type": "image/png",
+      "file_type": "image",
+      "url": "https://cdn.example.com/checkout-error.png"
+    }]
+  }'
+
+# Read history (requires the agent:read scope)
+GET ${backendEndpoint}/api/v1/agent-sessions/<SESSION_ID>/messages`
 
   const jsExample = `const response = await fetch("${invocationUrl}", {
   method: "POST",
@@ -108,6 +130,16 @@ print(response.json())`
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Use an application key with <code className="font-mono">agent:invoke</code> to chat and add <code className="font-mono">agent:read</code> to read history. Create a session with <code className="font-mono">POST /api/v1/agent-sessions/&lt;AGENT_ID&gt;</code>; reuse its ID on later invocations. Sessions are isolated to the application that created them.
+            </p>
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">Sessions, history, and image URLs</h3>
+              <pre className="p-4 bg-muted rounded-lg text-xs font-mono overflow-x-auto">{sessionExample}</pre>
+              <p className="text-xs text-muted-foreground">
+                Images may use either a public <code className="font-mono">url</code> or a private base64 <code className="font-mono">data</code> URI. Provide exactly one. Document attachments must use <code className="font-mono">data</code> so they can be stored and indexed.
+              </p>
+            </div>
             <div className="space-y-2">
               <h3 className="text-sm font-semibold">cURL Request Example</h3>
               <pre className="p-4 bg-muted rounded-lg text-xs font-mono overflow-x-auto">
@@ -173,7 +205,7 @@ print(response.json())`
             <div className="space-y-3">
               <div className="p-3 border rounded-md">
                 <p className="font-mono text-xs font-semibold text-rose-500">INPUT_SCHEMA_VALIDATION_FAILED (422)</p>
-                <p className="text-xs text-muted-foreground mt-1">The request body input did not conform to the agent's pinned input schema.</p>
+                <p className="text-xs text-muted-foreground mt-1">The request body input did not conform to the agent&apos;s pinned input schema.</p>
               </div>
               <div className="p-3 border rounded-md">
                 <p className="font-mono text-xs font-semibold text-rose-500">OUTPUT_SCHEMA_VALIDATION_FAILED (502)</p>

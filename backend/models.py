@@ -101,6 +101,7 @@ class Session(Base):
 
     id                  = Column(Integer, primary_key=True, index=True)
     user_id             = Column(Integer, ForeignKey("users.id"), nullable=False)
+    application_id      = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
     title               = Column(String, nullable=True)
     entity_type         = Column(String, nullable=False)           # agent | team
     entity_id           = Column(Integer, nullable=False)

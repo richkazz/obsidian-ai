@@ -36,6 +36,52 @@ validated JSON `output`. Inputs are validated before execution and output is
 parsed and validated server-side. Invalid output returns the machine-readable
 `OUTPUT_SCHEMA_VALIDATION_FAILED` code without provider internals or secrets.
 
+## Build an external chat UI
+
+Give the browser or external client a key with both `agent:invoke` and
+`agent:read` scopes. Create a session once, retain its returned `id`, and send
+that `session_id` on each invocation:
+
+```bash
+curl -X POST "$OBSIDIAN_URL/api/v1/agent-sessions/123" \
+   -H "Authorization: Bearer $OBSIDIAN_API_KEY"
+
+curl -X POST "$OBSIDIAN_URL/api/v1/agent-invocations/123" \
+   -H "Authorization: Bearer $OBSIDIAN_API_KEY" \
+   -H 'Content-Type: application/json' \
+   -d '{"session_id": "SESSION_ID", "input": {"question": "What failed?"}}'
+```
+
+Sessions created through these endpoints are bound to the application that
+owns the API key. A different application cannot read or append to the
+session, even if it knows the session ID. History is available through
+`GET /api/v1/agent-sessions/{session_id}` and
+`GET /api/v1/agent-sessions/{session_id}/messages`.
+
+Image input can be sent as a base64 data URI or as a remote URL in
+`attachments`. URL images are passed to the configured model provider and the
+URL is retained in session history for replay:
+
+```json
+{
+   "session_id": "SESSION_ID",
+   "input": {"title": "Checkout error", "steps": ["submit payment"]},
+   "attachments": [{
+      "filename": "checkout-error.png",
+      "media_type": "image/png",
+      "file_type": "image",
+      "url": "https://cdn.example.com/checkout-error.png"
+   }]
+}
+```
+
+Use `data: "data:image/png;base64,..."` instead when the image is private or
+not publicly reachable by the model provider. Document attachments must use
+`data`; they are stored and indexed for the agent's knowledge retrieval path.
+URL-backed documents are rejected because the server does not download remote
+documents. Use `agent:read` only for clients that need conversation history;
+invocation-only clients need only `agent:invoke`.
+
 ## Access controls
 
 Authorization is evaluated as **Application → API key scopes → explicit agent

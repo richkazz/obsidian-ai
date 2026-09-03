@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, model_validator
 from typing import Optional, Union
 from datetime import datetime
 
@@ -378,6 +378,7 @@ class FileAttachmentInfo(BaseModel):
     media_type: str
     file_type: str = "document"  # "image" | "document"
     data: Optional[str] = None   # base64 data URI
+    url: Optional[str] = None    # externally hosted URL, primarily for images
 
 class FileAttachmentResponse(BaseModel):
     id: str
@@ -1208,6 +1209,14 @@ class ExternalInvokeRequest(BaseModel):
     input: object
     version: Optional[int] = None
     session_id: Optional[str] = None
+    attachments: list[FileAttachmentInfo] = []
     # An explicit value lets non-LLM/testing integrations supply the already
     # structured result; production execution still validates server-side.
     output: Optional[object] = None
+
+    @model_validator(mode="after")
+    def validate_attachments(self):
+        for attachment in self.attachments:
+            if bool(attachment.data) == bool(attachment.url):
+                raise ValueError("Each attachment must provide exactly one of data or url")
+        return self

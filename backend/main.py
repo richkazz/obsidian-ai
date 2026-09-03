@@ -83,6 +83,15 @@ def _run_sqlite_migrations(engine):
         except Exception:
             conn.rollback()
 
+        # Bind externally-created chat history to its application.
+        try:
+            conn.execute(sqlalchemy.text(
+                "ALTER TABLE sessions ADD COLUMN application_id INTEGER REFERENCES applications(id)"
+            ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         # Add permissions_json to users if missing
         try:
             conn.execute(sqlalchemy.text(

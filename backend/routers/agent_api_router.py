@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Agent, AgentVersion, AgentAPIConfig, Application, ApplicationAgentAccess, SchemaVersion, APIRequest
+from models import Agent, AgentVersion, AgentAPIConfig, Application, ApplicationAgentAccess, SchemaVersion, APIRequest, Message
 from auth import get_current_user, get_application_api_key, TokenData, ApplicationKeyData
 from schemas import AgentAPIConfigCreate, ExternalInvokeRequest
 from services.schema_validation_service import validate_json_schema
@@ -40,6 +40,65 @@ def authorize_agent(db, key, agent_id, permission):
     if not grant or permission not in parse(grant.permissions_json, []):
         raise HTTPException(403, detail={"code": "AGENT_ACCESS_DENIED", "message": "Application is not allowed to access this agent"})
     return config
+
+def application_session(db, key, agent_id, session_id):
+    from models import Session as ChatSession
+    try:
+        query = db.query(ChatSession).filter(
+            ChatSession.id == int(session_id),
+            ChatSession.application_id == int(key.application_id),
+            ChatSession.entity_type == "agent",
+        )
+        if agent_id:
+            query = query.filter(ChatSession.entity_id == agent_id)
+        session = query.first()
+    except (TypeError, ValueError):
+        session = None
+    if not session:
+        raise HTTPException(404, detail={"code": "SESSION_NOT_FOUND"})
+    return session
+
+@router.post("/agent-sessions/{agent_id}")
+def create_external_session(agent_id: int, title: str = "API chat", db: Session = Depends(get_db), key: ApplicationKeyData = Depends(get_application_api_key)):
+    authorize_agent(db, key, agent_id, "agent:invoke")
+    from models import Session as ChatSession
+    agent = db.get(Agent, agent_id)
+    session = ChatSession(
+        user_id=agent.user_id,
+        application_id=int(key.application_id),
+        title=title,
+        entity_type="agent",
+        entity_id=agent_id,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return {
+        "id": str(session.id), "title": session.title, "entity_type": session.entity_type,
+        "entity_id": str(session.entity_id), "is_active": session.is_active,
+        "created_at": session.created_at, "updated_at": session.updated_at,
+    }
+
+@router.get("/agent-sessions/{session_id}")
+def get_external_session(session_id: str, db: Session = Depends(get_db), key: ApplicationKeyData = Depends(get_application_api_key)):
+    assert_scope(key, ["agent:read"])
+    session = application_session(db, key, 0, session_id)
+    return {
+        "id": str(session.id), "title": session.title, "entity_type": session.entity_type,
+        "entity_id": str(session.entity_id), "is_active": session.is_active,
+        "created_at": session.created_at, "updated_at": session.updated_at,
+    }
+
+@router.get("/agent-sessions/{session_id}/messages")
+def get_external_session_messages(session_id: str, limit: int = 100, offset: int = 0, db: Session = Depends(get_db), key: ApplicationKeyData = Depends(get_application_api_key)):
+    assert_scope(key, ["agent:read"])
+    session = application_session(db, key, 0, session_id)
+    messages = db.query(Message).filter(Message.session_id == session.id).order_by(Message.created_at.asc()).offset(offset).limit(min(limit, 500)).all()
+    return {"messages": [{
+        "id": str(message.id), "session_id": str(message.session_id), "role": message.role,
+        "content": message.content, "attachments": parse(message.attachments_json, None),
+        "created_at": message.created_at,
+    } for message in messages]}
 
 @router.get("/agent-api-configs/{agent_id}")
 @router.get("/agents/{agent_id}/api-config")
@@ -128,26 +187,45 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
         return {"request_id": request_id, "agent_id": str(agent_id), "agent_version": version.version_number if version else None, "input_schema_version": input_schema.version_number, "output_schema_version": output_schema.version_number, "status": "completed", "output": output}
 
     # Output validation & single bounded repair attempt
-    from models import Session as ChatSession, Message
+    from models import Session as ChatSession
     from services.agent_runner import run_agent_headless
     agent = db.get(Agent, agent_id)
     session = None
     if body.session_id is not None:
         try:
-            session = db.query(ChatSession).filter(
-                ChatSession.id == int(body.session_id),
-                ChatSession.user_id == agent.user_id,
-                ChatSession.entity_type == "agent",
-                ChatSession.entity_id == agent_id,
-            ).first()
+            session = application_session(db, key, agent_id, body.session_id)
         except (TypeError, ValueError):
             session = None
         if not session:
             raise HTTPException(404, detail={"code": "SESSION_NOT_FOUND", "request_id": request_id})
     else:
-        session = ChatSession(user_id=agent.user_id, title="API invocation", entity_type="agent", entity_id=agent_id)
+        session = ChatSession(user_id=agent.user_id, application_id=int(key.application_id), title="API invocation", entity_type="agent", entity_id=agent_id)
         db.add(session); db.flush()
-    db.add(Message(session_id=session.id, role="user", content=json.dumps(body.input))); db.commit()
+    image_parts = []
+    attachment_records = []
+    if body.attachments:
+        from routers.chat_router import _process_attachments_sqlite
+        local_attachments = [attachment for attachment in body.attachments if attachment.data]
+        image_parts, attachment_records = _process_attachments_sqlite(local_attachments, session.id, agent.user_id, db)
+        for attachment in body.attachments:
+            if attachment.url:
+                if attachment.file_type != "image" and not attachment.media_type.startswith("image/"):
+                    raise HTTPException(422, detail={"code": "URL_ATTACHMENT_MUST_BE_IMAGE", "message": "URL attachments currently support images only"})
+                image_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": attachment.url},
+                })
+                attachment_records.append({
+                    "filename": attachment.filename,
+                    "media_type": attachment.media_type,
+                    "file_type": "image",
+                    "url": attachment.url,
+                })
+    user_content = json.dumps(body.input)
+    if image_parts:
+        user_content = json.dumps([{"type": "text", "text": user_content}, *image_parts])
+    user_message = Message(session_id=session.id, role="user", content=user_content, attachments_json=json.dumps(attachment_records) if attachment_records else None)
+    db.add(user_message); db.commit(); db.refresh(user_message)
 
     output = None
     raw = ""
