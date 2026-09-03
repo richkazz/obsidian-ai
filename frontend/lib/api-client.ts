@@ -932,6 +932,31 @@ class ApiClient {
   async markAsyncJobSeen(jobId: string): Promise<void> {
     await this.request(AppRoutes.AsyncJobMarkSeen(jobId), { method: "POST" })
   }
+
+  // Generic HTTP methods
+  async get<T = any>(url: string): Promise<T> {
+    return this.request<T>(url)
+  }
+
+  async post<T = any>(url: string, data?: any): Promise<T> {
+    return this.request<T>(url, {
+      method: "POST",
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+
+  async put<T = any>(url: string, data?: any): Promise<T> {
+    return this.request<T>(url, {
+      method: "PUT",
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+
+  async delete<T = any>(url: string): Promise<T> {
+    return this.request<T>(url, {
+      method: "DELETE",
+    })
+  }
 }
 
 export const apiClient = new ApiClient()

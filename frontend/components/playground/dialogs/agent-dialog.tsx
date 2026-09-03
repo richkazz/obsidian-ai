@@ -24,6 +24,7 @@ import Link from "next/link"
 import { apiClient } from "@/lib/api-client"
 import { usePlaygroundStore } from "@/stores/playground-store"
 import type { Agent, ToolDefinition, MCPServer, KnowledgeBase, AgentMemory, AgentVersion, AgentConfigSnapshot, OptimizationRun, EvalSuite, PromptVaultEntry, Skill } from "@/types/playground"
+import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle2, Circle, Server, BookOpen, ExternalLink, ShieldAlert, Brain, Trash2, Wrench, Sparkles, History, RotateCcw, ChevronDown, ChevronRight, Zap, CheckCheck, X, Terminal, Play, Square, BookMarked, GraduationCap } from "lucide-react"
 import { AppRoutes } from "@/app/api/routes"
 
@@ -248,6 +249,17 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
   const [optPollTimer, setOptPollTimer] = useState<ReturnType<typeof setInterval> | null>(null)
   const [evalSuites, setEvalSuites] = useState<EvalSuite[]>([])
   const [selectedEvalSuiteId, setSelectedEvalSuiteId] = useState<string>("none")
+  // API Exposure & Deployment State
+  const [activeTab, setActiveTab] = useState<"general" | "api">("general")
+  const [apiExposed, setApiKeyExposed] = useState(false)
+  const [ownerAppId, setOwnerAppId] = useState<string>("")
+  const [publicationState, setPublicationState] = useState<string>("draft")
+  const [inputSchemaVerId, setInputSchemaVerId] = useState<string>("")
+  const [outputSchemaVerId, setOutputSchemaVerId] = useState<string>("")
+  const [apiRateLimit, setApiRateLimit] = useState<string>("60/minute")
+  const [schemasList, setSchemasList] = useState<any[]>([])
+  const [appsList, setAppsList] = useState<any[]>([])
+
   // Prompt vault state
   const [promptVaultId, setPromptVaultId] = useState<string | null>(null)
   const [vaultPickerOpen, setVaultPickerOpen] = useState(false)
@@ -271,8 +283,10 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
     apiClient.listKnowledgeBases().then(setAvailableKBs).catch(() => {})
     apiClient.listSkills().then(setAvailableSkills).catch(() => {})
 
-    // Load eval suites for optimizer selector
+    // Load eval suites, schemas, and applications for API deployment tab
     apiClient.listEvalSuites().then(setEvalSuites).catch(() => {})
+    apiClient.get("/api/v1/schemas").then(setSchemasList).catch(() => {})
+    apiClient.get("/api/v1/applications").then(setAppsList).catch(() => {})
 
     if (agent) {
       setName(agent.name)
@@ -291,6 +305,20 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
       setSandboxRunning(agent.sandbox_container_id != null && agent.sandbox_enabled === true)
       setPromptVaultId(agent.prompt_vault_id ?? null)
       apiClient.listAgentMemories(agent.id).then(setMemories).catch(() => {})
+
+      // Fetch agent API deployment config
+      apiClient.get(`/api/v1/agent-api-configs/${agent.id}`).then((cfg) => {
+        if (cfg) {
+          setApiKeyExposed(true)
+          setOwnerAppId(cfg.owner_application_id ? String(cfg.owner_application_id) : "")
+          setPublicationState(cfg.publication_state || "draft")
+          setInputSchemaVerId(cfg.input_schema_version_id ? String(cfg.input_schema_version_id) : "")
+          setOutputSchemaVerId(cfg.output_schema_version_id ? String(cfg.output_schema_version_id) : "")
+          setApiRateLimit(cfg.rate_limit || "60/minute")
+        }
+      }).catch(() => {
+        setApiKeyExposed(false)
+      })
       setVersions([])
       setVersionsOpen(false)
       setDiffVersion(null)
@@ -340,6 +368,15 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
           sandbox_enabled: sandboxEnabled,
         })
         setAgents(agents.map((a) => (a.id === updated.id ? updated : a)))
+        if (apiExposed) {
+          await apiClient.put(`/api/v1/agents/${updated.id}/api-config`, {
+            owner_application_id: ownerAppId || null,
+            input_schema_version_id: inputSchemaVerId || null,
+            output_schema_version_id: outputSchemaVerId || null,
+            required_scopes: ["agent:invoke"],
+            rate_limit: apiRateLimit || "60/minute",
+          }).catch(() => {})
+        }
         onSaved?.(updated)
       } else {
         const newAgent = await apiClient.createAgent({
@@ -358,6 +395,15 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
           memory_enabled: memoryEnabled,
           sandbox_enabled: sandboxEnabled,
         })
+        if (apiExposed && newAgent) {
+          await apiClient.put(`/api/v1/agents/${newAgent.id}/api-config`, {
+            owner_application_id: ownerAppId || null,
+            input_schema_version_id: inputSchemaVerId || null,
+            output_schema_version_id: outputSchemaVerId || null,
+            required_scopes: ["agent:invoke"],
+            rate_limit: apiRateLimit || "60/minute",
+          }).catch(() => {})
+        }
         setAgents([...agents, newAgent])
         setSelectedAgent(newAgent.id)
         onSaved?.(newAgent)
@@ -690,14 +736,122 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent showFullscreenButton className="sm:max-w-150 max-h-[85vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
-          <DialogTitle>{isEditing ? "Edit Agent" : "Create Agent"}</DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? "Update agent configuration, model, and tools."
-              : "Configure a new AI agent with a system prompt and model."}
-          </DialogDescription>
+          <div className="flex items-center justify-between border-b pb-3">
+            <div>
+              <DialogTitle>{isEditing ? "Edit Agent" : "Create Agent"}</DialogTitle>
+              <DialogDescription>
+                {isEditing
+                  ? "Update agent configuration, model, tools, and deployment."
+                  : "Configure a new AI agent with a system prompt and model."}
+              </DialogDescription>
+            </div>
+            <div className="flex items-center gap-1 bg-muted p-1 rounded-md">
+              <Button
+                variant={activeTab === "general" ? "secondary" : "ghost"}
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => setActiveTab("general")}
+              >
+                Config
+              </Button>
+              <Button
+                variant={activeTab === "api" ? "secondary" : "ghost"}
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => setActiveTab("api")}
+              >
+                API & Deployment
+              </Button>
+            </div>
+          </div>
         </DialogHeader>
 
+        {activeTab === "api" ? (
+          <div className="grid gap-4 py-4 px-6 overflow-y-auto flex-1 min-h-0">
+            <div className="flex items-center justify-between p-3 border rounded-lg bg-card">
+              <div>
+                <Label className="font-medium">Enable API Exposure</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Allow external applications to invoke this agent via scoped API keys.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant={apiExposed ? "default" : "outline"}
+                onClick={() => setApiKeyExposed(!apiExposed)}
+              >
+                {apiExposed ? "Exposed" : "Disabled"}
+              </Button>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Owner Application</Label>
+              <Select value={ownerAppId} onValueChange={setOwnerAppId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select application..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {appsList.map((app) => (
+                    <SelectItem key={app.id} value={app.id}>
+                      {app.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Input Schema Version</Label>
+                <Select value={inputSchemaVerId} onValueChange={setInputSchemaVerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select input schema..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schemasList.filter((s) => s.direction === "input").map((s) => (
+                      <SelectItem key={s.latest_version?.id || s.id} value={s.latest_version?.id || s.id}>
+                        {s.name} (v{s.latest_version?.version_number || 1})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Output Schema Version</Label>
+                <Select value={outputSchemaVerId} onValueChange={setOutputSchemaVerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select output schema..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schemasList.filter((s) => s.direction === "output").map((s) => (
+                      <SelectItem key={s.latest_version?.id || s.id} value={s.latest_version?.id || s.id}>
+                        {s.name} (v{s.latest_version?.version_number || 1})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Rate Limit Tier</Label>
+              <Input
+                value={apiRateLimit}
+                onChange={(e) => setApiRateLimit(e.target.value)}
+                placeholder="e.g. 60/minute"
+              />
+            </div>
+
+            <div className="p-3 border rounded-lg bg-muted/20 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Publication Lifecycle</p>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium capitalize">Current State: {publicationState}</span>
+                <Badge variant="outline">{publicationState}</Badge>
+              </div>
+            </div>
+          </div>
+        ) : (
         <div className="grid gap-4 py-4 px-6 overflow-y-auto flex-1 min-h-0">
           <div className="grid gap-2">
             <Label htmlFor="agent-name">Name</Label>
@@ -1684,6 +1838,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
             </div>
           )}
         </div>
+        )}
 
         {error && <p className="px-6 shrink-0 text-sm text-destructive">{error}</p>}
 

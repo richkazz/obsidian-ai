@@ -401,6 +401,9 @@ class AgentVersion(Base):
     version_number  = Column(Integer, nullable=False)       # monotonically increasing per agent
     config_snapshot = Column(Text, nullable=False)          # full JSON dump of the agent at that point
     change_summary  = Column(String, nullable=True)         # e.g. "Manual edit", "Rollback to v2"
+    # Contract references are immutable once a version is published.
+    input_schema_version_id = Column(Integer, ForeignKey("schema_versions.id"), nullable=True)
+    output_schema_version_id = Column(Integer, ForeignKey("schema_versions.id"), nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -564,3 +567,103 @@ class WAContactSession(Base):
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+# External Agent API platform.  These are deliberately additive: a normal agent
+# has no API configuration and continues to use the existing execution paths.
+class Application(Base):
+    __tablename__ = "applications"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default="active")
+    default_scopes_json = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class APIKey(Base):
+    __tablename__ = "api_keys"
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    key_prefix = Column(String, unique=True, nullable=False, index=True)
+    secret_hash = Column(String, nullable=False)
+    scopes_json = Column(Text, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ApplicationAgentAccess(Base):
+    __tablename__ = "application_agent_access"
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    permissions_json = Column(Text, nullable=False)
+    granted_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AgentAPIConfig(Base):
+    __tablename__ = "agent_api_configs"
+    id = Column(Integer, primary_key=True, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    owner_application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
+    publication_state = Column(String, nullable=False, default="draft")
+    published_version_id = Column(Integer, ForeignKey("agent_versions.id"), nullable=True)
+    input_schema_version_id = Column(Integer, ForeignKey("schema_versions.id"), nullable=True)
+    output_schema_version_id = Column(Integer, ForeignKey("schema_versions.id"), nullable=True)
+    required_scopes_json = Column(Text, nullable=False, default='["agent:invoke"]')
+    rate_limit = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class Schema(Base):
+    __tablename__ = "schemas"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    direction = Column(String, nullable=False)  # input | output
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SchemaVersion(Base):
+    __tablename__ = "schema_versions"
+    id = Column(Integer, primary_key=True, index=True)
+    schema_id = Column(Integer, ForeignKey("schemas.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+    canonical_schema_json = Column(Text, nullable=False)
+    source_format = Column(String, nullable=False, default="json_schema")
+    source_definition = Column(Text, nullable=True)
+    compatibility_mode = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class APIRequest(Base):
+    __tablename__ = "api_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(String, unique=True, nullable=False, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
+    api_key_id = Column(Integer, ForeignKey("api_keys.id"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
+    agent_version_id = Column(Integer, ForeignKey("agent_versions.id"), nullable=True)
+    status = Column(String, nullable=False)
+    error_code = Column(String, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    id = Column(Integer, primary_key=True, index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
+    resource_id = Column(String, nullable=True, index=True)
+    event_type = Column(String, nullable=False, index=True)
+    details_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

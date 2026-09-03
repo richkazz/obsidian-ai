@@ -47,6 +47,9 @@ from routers.analytics_router import router as analytics_router
 from routers.whatsapp_router import router as whatsapp_router
 from routers.prompt_vault_router import router as prompt_vault_router
 from routers.skills_router import router as skills_router
+from routers.applications_router import router as applications_router
+from routers.schemas_router import router as schemas_router
+from routers.agent_api_router import router as agent_api_router
 
 if DATABASE_TYPE == "mongo":
     from database_mongo import connect_to_mongo, close_mongo_connection, get_database
@@ -338,6 +341,14 @@ def _run_sqlite_migrations(engine):
             conn.commit()
         except Exception:
             conn.rollback()
+
+        # Agent version contract references are additive so existing snapshots stay valid.
+        for column in ("input_schema_version_id", "output_schema_version_id"):
+            try:
+                conn.execute(sqlalchemy.text(f"ALTER TABLE agent_versions ADD COLUMN {column} INTEGER"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
         # Create agent_versions table if missing
         try:
@@ -1096,6 +1107,9 @@ app.include_router(analytics_router)
 app.include_router(whatsapp_router)
 app.include_router(prompt_vault_router)
 app.include_router(skills_router)
+app.include_router(applications_router)
+app.include_router(schemas_router)
+app.include_router(agent_api_router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
