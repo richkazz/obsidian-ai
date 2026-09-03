@@ -270,6 +270,50 @@ class ApiClient {
     })
   }
 
+  async listApplications(): Promise<any[]> {
+    return this.request<any[]>(AppRoutes.ListApplications())
+  }
+
+  async createApplication(data: object): Promise<any> {
+    return this.request<any>(AppRoutes.CreateApplication(), { method: "POST", body: JSON.stringify(data) })
+  }
+
+  async listApplicationKeys(applicationId: string): Promise<any[]> {
+    return this.request<any[]>(AppRoutes.ListApplicationKeys(applicationId))
+  }
+
+  async createApplicationKey(applicationId: string, data: object): Promise<any> {
+    return this.request<any>(AppRoutes.CreateApplicationKey(applicationId), { method: "POST", body: JSON.stringify(data) })
+  }
+
+  async revokeApplicationKey(applicationId: string, keyId: string): Promise<any> {
+    return this.request<any>(AppRoutes.RevokeApplicationKey(applicationId, keyId), { method: "POST", body: JSON.stringify({}) })
+  }
+
+  async getAgentAPIConfig(agentId: string): Promise<any> {
+    return this.request<any>(AppRoutes.GetAgentAPIConfig(agentId))
+  }
+
+  async configureAgentAPI(agentId: string, data: object): Promise<any> {
+    return this.request<any>(AppRoutes.ConfigureAgentAPI(agentId), { method: "PUT", body: JSON.stringify(data) })
+  }
+
+  async publishAgentAPI(agentId: string): Promise<any> {
+    return this.request<any>(AppRoutes.PublishAgentAPI(agentId), { method: "POST" })
+  }
+
+  async transitionAgentAPI(agentId: string, action: "testing" | "deprecate" | "retire"): Promise<any> {
+    return this.request<any>(AppRoutes.TransitionAgentAPI(agentId, action), { method: "POST" })
+  }
+
+  async listSchemas(): Promise<any[]> {
+    return this.request<any[]>(AppRoutes.ListSchemas())
+  }
+
+  async createSchema(data: object): Promise<any> {
+    return this.request<any>(AppRoutes.CreateSchema(), { method: "POST", body: JSON.stringify(data) })
+  }
+
   async deleteAgent(id: string): Promise<void> {
     await this.request<void>(AppRoutes.DeleteAgent(id), {
       method: "DELETE",

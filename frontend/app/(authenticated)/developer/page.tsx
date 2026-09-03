@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Key, Copy, Check, Trash2, Eye, Shield, Globe, Layers, BookOpen } from "lucide-react"
+import { Plus, Key, Copy, Check, Trash2, Globe, Layers, BookOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,6 +38,7 @@ export default function DeveloperPage() {
   const [loading, setLoading] = useState(true)
   const [selectedApp, setSelectedApp] = useState<Application | null>(null)
   const [keys, setKeys] = useState<APIKey[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   // New Application Modal State
   const [showCreateApp, setShowCreateApp] = useState(false)
@@ -49,6 +50,7 @@ export default function DeveloperPage() {
   const [showCreateKey, setShowCreateKey] = useState(false)
   const [keyName, setKeyName] = useState("")
   const [keyScopes, setKeyScopes] = useState("agent:invoke,agent:read")
+  const [keyExpiry, setKeyExpiry] = useState("")
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState(false)
 
@@ -59,14 +61,14 @@ export default function DeveloperPage() {
   const fetchApplications = async () => {
     try {
       setLoading(true)
-      const data = await apiClient.get("/api/v1/applications")
+      const data = await apiClient.listApplications()
       setApplications(data || [])
       if (data && data.length > 0 && !selectedApp) {
         setSelectedApp(data[0])
         fetchKeys(data[0].id)
       }
     } catch (err) {
-      console.error("Failed to load applications:", err)
+      setError(err instanceof Error ? err.message : "Failed to load applications")
     } finally {
       setLoading(false)
     }
@@ -74,10 +76,10 @@ export default function DeveloperPage() {
 
   const fetchKeys = async (appId: string) => {
     try {
-      const data = await apiClient.get(`/api/v1/applications/${appId}/keys`)
+      const data = await apiClient.listApplicationKeys(appId)
       setKeys(data || [])
     } catch (err) {
-      console.error("Failed to load API keys:", err)
+      setError(err instanceof Error ? err.message : "Failed to load API keys")
     }
   }
 
@@ -90,7 +92,7 @@ export default function DeveloperPage() {
     e.preventDefault()
     try {
       const scopesArr = appScopes.split(",").map((s) => s.trim()).filter(Boolean)
-      const newApp = await apiClient.post("/api/v1/applications", {
+      const newApp = await apiClient.createApplication({
         name: appName,
         description: appDesc,
         default_scopes: scopesArr,
@@ -104,7 +106,7 @@ export default function DeveloperPage() {
         fetchKeys(newApp.id)
       }
     } catch (err) {
-      console.error("Failed to create application:", err)
+      setError(err instanceof Error ? err.message : "Failed to create application")
     }
   }
 
@@ -113,25 +115,27 @@ export default function DeveloperPage() {
     if (!selectedApp) return
     try {
       const scopesArr = keyScopes.split(",").map((s) => s.trim()).filter(Boolean)
-      const res = await apiClient.post(`/api/v1/applications/${selectedApp.id}/keys`, {
+      const res = await apiClient.createApplicationKey(selectedApp.id, {
         name: keyName,
         scopes: scopesArr,
+        expires_at: keyExpiry ? new Date(keyExpiry).toISOString() : undefined,
       })
       setNewlyCreatedKey(res.api_key)
       setKeyName("")
+      setKeyExpiry("")
       fetchKeys(selectedApp.id)
     } catch (err) {
-      console.error("Failed to create key:", err)
+      setError(err instanceof Error ? err.message : "Failed to create API key")
     }
   }
 
   const handleRevokeKey = async (keyId: string) => {
     if (!selectedApp) return
     try {
-      await apiClient.post(`/api/v1/applications/${selectedApp.id}/keys/${keyId}/revoke`, {})
+      await apiClient.revokeApplicationKey(selectedApp.id, keyId)
       fetchKeys(selectedApp.id)
     } catch (err) {
-      console.error("Failed to revoke key:", err)
+      setError(err instanceof Error ? err.message : "Failed to revoke API key")
     }
   }
 
@@ -149,6 +153,12 @@ export default function DeveloperPage() {
           Manage application registrations, scoped API keys, schema-validated agent invocation, and integrations.
         </p>
       </div>
+
+      {error && (
+        <div role="alert" className="border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {/* Sidebar Navigation */}
@@ -400,6 +410,10 @@ export default function DeveloperPage() {
                   onChange={(e) => setKeyScopes(e.target.value)}
                   placeholder="agent:invoke, agent:read"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="key-expiry">Expiry (optional)</Label>
+                <Input id="key-expiry" type="datetime-local" value={keyExpiry} onChange={(e) => setKeyExpiry(e.target.value)} />
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setShowCreateKey(false)}>

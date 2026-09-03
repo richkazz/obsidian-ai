@@ -165,6 +165,19 @@ export const AppRoutes = {
     TeamSandboxStop     : (id: string) => `/api/teams/${id}/sandbox/stop`,
     TeamSandboxStatus   : (id: string) => `/api/teams/${id}/sandbox/status`,
 
+    ListApplications    : () => "/api/v1/applications",
+    CreateApplication   : () => "/api/v1/applications",
+    ListApplicationKeys : (applicationId: string) => `/api/v1/applications/${applicationId}/keys`,
+    CreateApplicationKey: (applicationId: string) => `/api/v1/applications/${applicationId}/keys`,
+    RevokeApplicationKey: (applicationId: string, keyId: string) => `/api/v1/applications/${applicationId}/keys/${keyId}/revoke`,
+    GetAgentAPIConfig   : (agentId: string) => `/api/v1/agent-api-configs/${agentId}`,
+    ConfigureAgentAPI   : (agentId: string) => `/api/v1/agents/${agentId}/api-config`,
+    PublishAgentAPI     : (agentId: string) => `/api/v1/agents/${agentId}/publish`,
+    TransitionAgentAPI  : (agentId: string, action: string) => `/api/v1/agents/${agentId}/${action}`,
+    ListSchemas         : () => "/api/v1/schemas",
+    CreateSchema        : () => "/api/v1/schemas",
+    ValidateSchema      : (schemaId: string, versionId: string) => `/api/v1/schemas/${schemaId}/versions/${versionId}/validate`,
+
     // Prompt Auto-Optimizer
     TriggerOptimization     : () => "/api/optimizer/trigger",
     ListOptimizationRuns    : (agentId: string) => `/api/optimizer/agents/${agentId}`,

@@ -22,6 +22,7 @@ import {
   Sparkles,
   Moon,
   Sun,
+  Code2,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -55,6 +56,7 @@ const toolItems: NavItem[] = [
   { label: "Evals",        icon: FlaskConical,  path: Routes.EVALS },
   { label: "Observability",icon: BarChart2,     path: Routes.OBSERVABILITY },
   { label: "Channels",     icon: MessageCircle, path: Routes.CHANNELS },
+  { label: "Developer",    icon: Code2,         path: Routes.DEVELOPER },
 ]
 
 const systemItems: NavItem[] = [

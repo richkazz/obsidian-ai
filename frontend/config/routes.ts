@@ -26,6 +26,7 @@ export const Routes = {
   SECRETS         : '/secrets',
   PROMPTS         : '/prompts',
   SKILLS          : '/skills',
+  DEVELOPER       : '/developer',
 } as const;
 
 
@@ -83,6 +84,12 @@ export const ProtectedRoutes: RouteConfig[] = [
     label: 'Settings',
     allowedRoles: ['admin', 'user'],
     description: 'Application settings and preferences',
+  },
+  {
+    path: Routes.DEVELOPER,
+    label: 'Developer & API Platform',
+    allowedRoles: ['admin', 'user'],
+    description: 'Applications, API keys, schemas, and published agent contracts',
   },
   {
     path: Routes.CHANNELS,

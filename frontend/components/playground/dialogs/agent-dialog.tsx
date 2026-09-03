@@ -259,6 +259,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
   const [apiRateLimit, setApiRateLimit] = useState<string>("60/minute")
   const [schemasList, setSchemasList] = useState<any[]>([])
   const [appsList, setAppsList] = useState<any[]>([])
+  const [apiActionLoading, setApiActionLoading] = useState(false)
 
   // Prompt vault state
   const [promptVaultId, setPromptVaultId] = useState<string | null>(null)
@@ -285,8 +286,8 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
 
     // Load eval suites, schemas, and applications for API deployment tab
     apiClient.listEvalSuites().then(setEvalSuites).catch(() => {})
-    apiClient.get("/api/v1/schemas").then(setSchemasList).catch(() => {})
-    apiClient.get("/api/v1/applications").then(setAppsList).catch(() => {})
+    apiClient.listSchemas().then(setSchemasList).catch(() => {})
+    apiClient.listApplications().then(setAppsList).catch(() => {})
 
     if (agent) {
       setName(agent.name)
@@ -307,7 +308,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
       apiClient.listAgentMemories(agent.id).then(setMemories).catch(() => {})
 
       // Fetch agent API deployment config
-      apiClient.get(`/api/v1/agent-api-configs/${agent.id}`).then((cfg) => {
+      apiClient.getAgentAPIConfig(agent.id).then((cfg) => {
         if (cfg) {
           setApiKeyExposed(true)
           setOwnerAppId(cfg.owner_application_id ? String(cfg.owner_application_id) : "")
@@ -369,7 +370,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
         })
         setAgents(agents.map((a) => (a.id === updated.id ? updated : a)))
         if (apiExposed) {
-          await apiClient.put(`/api/v1/agents/${updated.id}/api-config`, {
+          await apiClient.configureAgentAPI(updated.id, {
             owner_application_id: ownerAppId || null,
             input_schema_version_id: inputSchemaVerId || null,
             output_schema_version_id: outputSchemaVerId || null,
@@ -396,7 +397,7 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
           sandbox_enabled: sandboxEnabled,
         })
         if (apiExposed && newAgent) {
-          await apiClient.put(`/api/v1/agents/${newAgent.id}/api-config`, {
+          await apiClient.configureAgentAPI(newAgent.id, {
             owner_application_id: ownerAppId || null,
             input_schema_version_id: inputSchemaVerId || null,
             output_schema_version_id: outputSchemaVerId || null,
@@ -415,6 +416,21 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
       setError(err?.message || "Failed to save agent")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleApiLifecycle = async (action: "publish" | "testing" | "deprecate" | "retire") => {
+    if (!agent) return
+    setApiActionLoading(true)
+    try {
+      const result = action === "publish"
+        ? await apiClient.publishAgentAPI(agent.id)
+        : await apiClient.transitionAgentAPI(agent.id, action)
+      setPublicationState(result.publication_state)
+    } catch (err: any) {
+      setError(err?.message || `Failed to ${action} agent API`)
+    } finally {
+      setApiActionLoading(false)
     }
   }
 
@@ -849,6 +865,25 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
                 <span className="text-sm font-medium capitalize">Current State: {publicationState}</span>
                 <Badge variant="outline">{publicationState}</Badge>
               </div>
+              {isEditing && apiExposed && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {publicationState !== "published" && publicationState !== "retired" && (
+                    <Button type="button" size="sm" onClick={() => handleApiLifecycle("publish")} disabled={apiActionLoading}>
+                      Publish
+                    </Button>
+                  )}
+                  {publicationState === "published" && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => handleApiLifecycle("deprecate")} disabled={apiActionLoading}>
+                      Deprecate
+                    </Button>
+                  )}
+                  {publicationState !== "retired" && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => handleApiLifecycle("retire")} disabled={apiActionLoading}>
+                      Retire
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         ) : (

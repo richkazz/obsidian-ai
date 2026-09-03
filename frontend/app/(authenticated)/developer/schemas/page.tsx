@@ -51,7 +51,7 @@ export default function SchemasPage() {
   const fetchSchemas = async () => {
     try {
       setLoading(true)
-      const data = await apiClient.get("/api/v1/schemas")
+      const data = await apiClient.listSchemas()
       setSchemas(data || [])
     } catch (err) {
       console.error("Failed to load schemas:", err)
@@ -76,7 +76,7 @@ export default function SchemasPage() {
         }
       }
 
-      await apiClient.post("/api/v1/schemas", {
+      await apiClient.createSchema({
         name: schemaName,
         direction,
         canonical_schema: schemaDef,
