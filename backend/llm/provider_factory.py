@@ -15,6 +15,7 @@ def create_provider_from_config(
     from .openai_provider import OpenAIProvider
     from .anthropic_provider import AnthropicProvider
     from .google_provider import GoogleProvider
+    from .nvidia_provider import NvidiaProvider
 
     PROVIDER_MAP = {
         "openai": OpenAIProvider,
@@ -22,6 +23,8 @@ def create_provider_from_config(
         "google": GoogleProvider,
         "openrouter": OpenAIProvider,
         "custom": OpenAIProvider,
+        "nvidia": NvidiaProvider,
+        "nvidia_nim": NvidiaProvider,
     }
 
     provider_cls = PROVIDER_MAP.get(provider_type)

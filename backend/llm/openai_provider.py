@@ -30,6 +30,21 @@ def _strip_think_tags(content: str) -> tuple[str, str]:
 
 class OpenAIProvider(BaseLLMProvider):
 
+    CONFIG_KEYS: tuple[str, ...] = (
+        "temperature",
+        "max_tokens",
+        "top_p",
+        "stop",
+        "seed",
+        "frequency_penalty",
+        "presence_penalty",
+        "reasoning_effort",
+        "top_k",
+        "chat_template_kwargs",
+        "reasoning_budget",
+        "extra_body",
+    )
+
     def __init__(self, api_key=None, base_url=None, model_id="gpt-5.5", config=None):
         super().__init__(api_key, base_url or "https://api.openai.com/", model_id, config)
         self._tool_name_map: dict[str, str] = {}  # sanitized_name -> original_name
@@ -39,6 +54,47 @@ class OpenAIProvider(BaseLLMProvider):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
+
+    def _url(self, path: str) -> str:
+        """Construct full URL avoiding duplicated '/v1' prefix."""
+        base = self.base_url.rstrip("/")
+        if path.startswith("/"):
+            path = path[1:]
+        if base.endswith("/v1") and path.startswith("v1/"):
+            path = path[3:]
+        return f"{base}/{path}"
+
+    def _build_payload(
+        self,
+        messages: list[LLMMessage],
+        system_prompt: str | None = None,
+        tools: list[dict] | None = None,
+        response_schema: dict | None = None,
+        stream: bool = False,
+    ) -> dict:
+        payload = {
+            "model": self.model_id,
+            "messages": self._build_messages(messages, system_prompt),
+        }
+
+        if stream:
+            payload["stream"] = True
+            payload["stream_options"] = {"include_usage": True}
+
+        if tools:
+            payload["tools"] = self._prepare_tools(tools)
+
+        if response_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "agent_output", "schema": response_schema, "strict": True},
+            }
+
+        for k, v in self.config.items():
+            if k in self.CONFIG_KEYS and v is not None:
+                payload[k] = v
+
+        return payload
 
     def _sanitize_tool_name(self, name: str) -> str:
         """Sanitize a tool name to match OpenAI's requirements: ^[a-zA-Z0-9_-]{1,64}$"""
@@ -92,19 +148,11 @@ class OpenAIProvider(BaseLLMProvider):
 
     async def chat(self, messages, system_prompt=None, tools=None, response_schema=None) -> LLMMessage:
         self._tool_name_map = {}
-        payload = {
-            "model": self.model_id,
-            "messages": self._build_messages(messages, system_prompt),
-            **{k: v for k, v in self.config.items() if k in ("temperature", "max_tokens", "top_p", "stop")},
-        }
-        if tools:
-            payload["tools"] = self._prepare_tools(tools)
-        if response_schema:
-            payload["response_format"] = {"type": "json_schema", "json_schema": {"name": "agent_output", "schema": response_schema, "strict": True}}
+        payload = self._build_payload(messages, system_prompt, tools, response_schema, stream=False)
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{self.base_url}/v1/chat/completions",
+                self._url("v1/chat/completions"),
                 json=payload,
                 headers=self._headers(),
             )
@@ -118,7 +166,7 @@ class OpenAIProvider(BaseLLMProvider):
                     logger.warning(f"OpenAI API returned 400 with tools. Error: {error_msg}. Retrying without tools.")
                     payload.pop("tools", None)
                     response = await client.post(
-                        f"{self.base_url}/v1/chat/completions",
+                        self._url("v1/chat/completions"),
                         json=payload,
                         headers=self._headers(),
                     )
@@ -271,20 +319,12 @@ class OpenAIProvider(BaseLLMProvider):
 
     async def chat_stream(self, messages, system_prompt=None, tools=None, response_schema=None) -> AsyncIterator[LLMStreamChunk]:
         self._tool_name_map = {}
-        payload = {
-            "model": self.model_id,
-            "messages": self._build_messages(messages, system_prompt),
-            "stream": True,
-            "stream_options": {"include_usage": True},
-            **{k: v for k, v in self.config.items() if k in ("temperature", "max_tokens", "top_p", "stop")},
-        }
-        if tools:
-            payload["tools"] = self._prepare_tools(tools)
+        payload = self._build_payload(messages, system_prompt, tools, response_schema, stream=True)
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream(
                 "POST",
-                f"{self.base_url}/v1/chat/completions",
+                self._url("v1/chat/completions"),
                 json=payload,
                 headers=self._headers(),
             ) as response:
@@ -309,7 +349,7 @@ class OpenAIProvider(BaseLLMProvider):
             # Retry after removing tools or stream_options
             async with client.stream(
                 "POST",
-                f"{self.base_url}/v1/chat/completions",
+                self._url("v1/chat/completions"),
                 json=payload,
                 headers=self._headers(),
             ) as response:
@@ -331,7 +371,7 @@ class OpenAIProvider(BaseLLMProvider):
             # Final retry without tools
             async with client.stream(
                 "POST",
-                f"{self.base_url}/v1/chat/completions",
+                self._url("v1/chat/completions"),
                 json=payload,
                 headers=self._headers(),
             ) as response:
@@ -342,7 +382,7 @@ class OpenAIProvider(BaseLLMProvider):
     async def list_models(self) -> list[dict]:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
-                f"{self.base_url}/models",
+                self._url("models"),
                 headers=self._headers(),
             )
             response.raise_for_status()
