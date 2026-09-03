@@ -1122,3 +1122,90 @@ class OptimizerSaveToVaultRequest(BaseModel):
 
 class OptimizerUpdateVaultRequest(BaseModel):
     vault_id: str
+
+# ==========================================================================
+# External Agent API / integrations
+# ==========================================================================
+class ApplicationCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    default_scopes: list[str] = []
+    metadata: Optional[dict] = None
+
+class ApplicationResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    status: str
+    default_scopes: list[str] = []
+    metadata: Optional[dict] = None
+    created_at: datetime
+
+class APIKeyCreate(BaseModel):
+    name: str
+    scopes: list[str] = []
+    expires_at: Optional[datetime] = None
+
+class APIKeyResponse(BaseModel):
+    id: str
+    name: str
+    key_prefix: str
+    scopes: list[str]
+    expires_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+class APIKeyCreateResponse(APIKeyResponse):
+    api_key: str
+    message: str = "Store this API key securely. It will not be shown again."
+
+class AgentShareCreate(BaseModel):
+    application_id: str
+    permissions: list[str] = ["agent:invoke"]
+
+class AgentAPIConfigCreate(BaseModel):
+    owner_application_id: Optional[str] = None
+    input_schema_version_id: Optional[str] = None
+    output_schema_version_id: Optional[str] = None
+    required_scopes: list[str] = ["agent:invoke"]
+    rate_limit: Optional[str] = None
+
+class SchemaCreate(BaseModel):
+    name: str
+    direction: str
+    canonical_schema: dict
+    source_format: str = "json_schema"
+    source_definition: Optional[str] = None
+    compatibility_mode: Optional[str] = None
+
+class SchemaVersionResponse(BaseModel):
+    id: str
+    schema_id: str
+    version_number: int
+    canonical_schema: dict
+    source_format: str
+    source_definition: Optional[str] = None
+    compatibility_mode: Optional[str] = None
+    created_at: datetime
+
+class SchemaResponse(BaseModel):
+    id: str
+    name: str
+    direction: str
+    created_at: datetime
+    latest_version: Optional[SchemaVersionResponse] = None
+
+class SchemaValidationRequest(BaseModel):
+    payload: object
+
+class SchemaValidationResponse(BaseModel):
+    valid: bool
+    errors: list[dict] = []
+
+class ExternalInvokeRequest(BaseModel):
+    input: object
+    version: Optional[int] = None
+    # An explicit value lets non-LLM/testing integrations supply the already
+    # structured result; production execution still validates server-side.
+    output: Optional[object] = None

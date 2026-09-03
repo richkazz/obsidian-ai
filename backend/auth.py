@@ -283,3 +283,38 @@ def require_permission(permission_key: str):
                 detail=f"You do not have permission to perform this action ({permission_key})",
             )
     return _check
+
+class ApplicationKeyData(BaseModel):
+    application_id: str
+    api_key_id: str
+    scopes: list[str]
+    token_type: str = "application_key"
+
+
+async def get_application_api_key(
+    api_key: Optional[str] = Depends(api_key_header),
+    db: Session = Depends(get_db),
+) -> ApplicationKeyData:
+    """Authenticate a prefixed one-time application API key.
+
+    Legacy X-API-Key/X-API-Secret clients remain untouched. New keys are a
+    single opaque value (`oba_<prefix>.<secret>`) and only their bcrypt digest
+    is retained.
+    """
+    if not api_key or "." not in api_key:
+        raise HTTPException(status_code=401, detail="Application API key required")
+    prefix, secret = api_key.split(".", 1)
+    from models import APIKey, Application
+    from services.api_key_service import verify_api_key
+    key = db.query(APIKey).filter(APIKey.key_prefix == prefix).first()
+    now = datetime.now(timezone.utc)
+    if not key or key.revoked_at or (key.expires_at and key.expires_at.replace(tzinfo=timezone.utc) <= now):
+        raise HTTPException(status_code=401, detail="Invalid, expired, or revoked API key")
+    if not verify_api_key(secret, key.secret_hash):
+        raise HTTPException(status_code=401, detail="Invalid, expired, or revoked API key")
+    app = db.query(Application).filter(Application.id == key.application_id, Application.status == "active").first()
+    if not app:
+        raise HTTPException(status_code=401, detail="Application is inactive")
+    key.last_used_at = now
+    db.commit()
+    return ApplicationKeyData(application_id=str(app.id), api_key_id=str(key.id), scopes=json.loads(key.scopes_json))
