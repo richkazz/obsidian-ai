@@ -501,6 +501,22 @@ async def _run_optimization_sqlite(
         _update(run_id, status="awaiting_review",
                 completed_at=datetime.now(timezone.utc))
 
+        # Record OTel trace span for optimization run
+        try:
+            from models import TraceSpan
+            from crypto_utils import sanitize_trace_data
+            span = TraceSpan(
+                span_type="optimizer_run",
+                name=f"optimization_{run_id}",
+                status="success",
+                input_data=sanitize_trace_data({"agent_id": agent_id, "patterns": patterns_raw}),
+                output_data=sanitize_trace_data({"proposed_prompt": proposed_prompt, "rationale": rationale}),
+            )
+            db.add(span)
+            db.commit()
+        except Exception as e:
+            logger.warning("Failed to record optimizer trace span: %s", e)
+
     except Exception as e:
         logger.exception("Optimization run %s failed unexpectedly", run_id)
         try:
@@ -725,6 +741,20 @@ async def _run_optimization_mongo(
         # ── Stage 6: surface for review ────────────────────────────────────────
         await _update(run_id, status="awaiting_review",
                       completed_at=datetime.now(timezone.utc))
+
+        # Record OTel trace span for optimization run (Mongo)
+        try:
+            from models_mongo import TraceSpanCollection
+            from crypto_utils import sanitize_trace_data
+            await TraceSpanCollection.create(mongo_db, {
+                "span_type": "optimizer_run",
+                "name": f"optimization_{run_id}",
+                "status": "success",
+                "input_data": sanitize_trace_data({"agent_id": agent_id, "patterns": patterns_raw}),
+                "output_data": sanitize_trace_data({"proposed_prompt": proposed_prompt, "rationale": rationale}),
+            })
+        except Exception as e:
+            logger.warning("Failed to record optimizer trace span (mongo): %s", e)
 
     except Exception as e:
         logger.exception("Optimization run %s (mongo) failed unexpectedly", run_id)

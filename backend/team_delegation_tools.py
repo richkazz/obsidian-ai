@@ -15,6 +15,7 @@ again. This bounds worst-case latency/cost and avoids delegation cycles
 (A calls B calls A calls B...) without needing cycle detection.
 """
 import json
+from typing import Any
 
 MAX_DELEGATION_DEPTH = 1
 
@@ -130,3 +131,110 @@ async def execute_call_teammate(
         return json.dumps({"error": f"Teammate '{teammate_name}' failed to respond: {e}"})
 
     return json.dumps({"teammate": teammate_name, "response": content})
+
+
+# ── MAF Multi-Agent Team Orchestrations ────────────────────────────────────────
+
+try:
+    from agent_framework import Agent, BaseChatClient, ChatResponse, Message as MAFMessage
+    from agent_framework.orchestrations import HandoffBuilder, MagenticBuilder
+except ImportError:
+    Agent = None
+    BaseChatClient = None
+    ChatResponse = None
+    MAFMessage = None
+    HandoffBuilder = None
+    MagenticBuilder = None
+
+
+def build_maf_handoff_team(
+    agents: list,
+    start_agent_name: str | None = None,
+    client: Any = None,
+) -> Any:
+    """
+    Build a MAF Handoff orchestration Workflow connecting specialized team agents.
+    Agents can hand off control to each other based on model intent.
+    """
+    if not HandoffBuilder or not agents:
+        return None
+
+    maf_agents = []
+    for ag in agents:
+        name = ag.get("name") if isinstance(ag, dict) else getattr(ag, "name", "Agent")
+        instructions = ag.get("system_prompt") if isinstance(ag, dict) else getattr(ag, "system_prompt", "")
+        maf_ag = Agent(
+            name=name,
+            instructions=instructions or f"You are agent {name}.",
+            client=client,
+            require_per_service_call_history_persistence=True,
+        )
+        maf_agents.append(maf_ag)
+
+    if not maf_agents:
+        return None
+
+    builder = HandoffBuilder()
+    builder.participants(maf_agents)
+
+    # Wire bi-directional handoffs between all participant pairs
+    for src in maf_agents:
+        targets = [tgt for tgt in maf_agents if tgt.name != src.name]
+        if targets:
+            builder.add_handoff(src, targets)
+
+    start_ag = maf_agents[0]
+    if start_agent_name:
+        for ag in maf_agents:
+            if ag.name.lower() == start_agent_name.lower():
+                start_ag = ag
+                break
+
+    builder.with_start_agent(start_ag)
+    return builder.build()
+
+
+def build_maf_magentic_team(
+    agents: list,
+    manager_agent_dict: dict | None = None,
+    client: Any = None,
+) -> Any:
+    """
+    Build a MAF Magentic supervisor orchestration Workflow where a supervisor manager agent
+    plans and delegates sub-tasks across team member agents.
+    """
+    if not MagenticBuilder or not agents:
+        return None
+
+    participant_agents = []
+    for ag in agents:
+        name = ag.get("name") if isinstance(ag, dict) else getattr(ag, "name", "Agent")
+        instructions = ag.get("system_prompt") if isinstance(ag, dict) else getattr(ag, "system_prompt", "")
+        maf_ag = Agent(
+            name=name,
+            instructions=instructions or f"You are specialist {name}.",
+            client=client,
+        )
+        participant_agents.append(maf_ag)
+
+    if not participant_agents:
+        return None
+
+    if manager_agent_dict:
+        mgr_name = manager_agent_dict.get("name", "Supervisor")
+        mgr_inst = manager_agent_dict.get("system_prompt", "You are the team supervisor manager.")
+    else:
+        mgr_name = "Supervisor"
+        mgr_inst = "You are the team supervisor. Analyze user requests, break down tasks, and delegate to specialized team members."
+
+    manager_ag = Agent(
+        name=mgr_name,
+        instructions=mgr_inst,
+        client=client,
+    )
+
+    builder = MagenticBuilder(
+        participants=participant_agents,
+        manager_agent=manager_ag,
+    )
+    return builder.build()
