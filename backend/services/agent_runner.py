@@ -240,9 +240,34 @@ async def _run_headless_sqlite(session_id: int, agent_id: int, db, response_sche
         getattr(agent, "sandbox_enabled", False) and
         getattr(agent, "sandbox_container_id", None)
     )
+
+    # MAF Context Providers Integration
+    from rag_service import VectorStoreContextProvider
+    from routers.memory_router import MemoryContextProvider
+
+    kb_ids = json.loads(agent.knowledge_base_ids_json) if getattr(agent, "knowledge_base_ids_json", None) else []
+    rag_provider = VectorStoreContextProvider(kb_ids=kb_ids, session_id=str(session_id))
+    memory_provider = MemoryContextProvider(agent_id=agent.id, user_id=agent.user_id, db=db, db_type="sqlite") if _memory_enabled else None
+
+    # Dummy SessionContext-like container to run MAF before_run hooks
+    class HeadlessSessionContext:
+        def __init__(self, input_messages):
+            self.input_messages = input_messages
+            self.instructions = []
+        def extend_instructions(self, source_id, instruction):
+            self.instructions.append(instruction)
+
+    ctx = HeadlessSessionContext(messages)
+    if memory_provider:
+        await memory_provider.before_run(agent=agent, session=None, context=ctx, state={})
+    if rag_provider:
+        await rag_provider.before_run(agent=agent, session=None, context=ctx, state={})
+
+    injected_instructions = "\n\n".join(ctx.instructions) if ctx.instructions else ""
+
     system_prompt = (
         (agent.system_prompt or "")
-        + _build_memory_injection(_agent_memories)
+        + (f"\n\n{injected_instructions}" if injected_instructions else _build_memory_injection(_agent_memories))
         + ("\n\nReturn only valid JSON matching the supplied response schema. Do not wrap it in markdown or add commentary." if response_schema else "\n\nIMPORTANT: You are responding via WhatsApp. Reply in plain text only. Do NOT use artifacts, XML tags, or markdown code blocks. Keep responses concise and conversational. If a tool returns an error, tell the user honestly what went wrong.")
         + (_SANDBOX_SYSTEM_HINT if _sandbox_active else "")
     )
@@ -473,9 +498,33 @@ async def _run_headless_mongo(
     ))[:_MEMORY_CAP] if _memory_enabled else []
     _sandbox_active = agent.get("sandbox_enabled") and agent.get("sandbox_container_id")
 
+    # MAF Context Providers Integration (Mongo)
+    from rag_service import VectorStoreContextProvider
+    from routers.memory_router import MemoryContextProvider
+
+    kb_ids_raw = agent.get("knowledge_base_ids_json")
+    kb_ids = json.loads(kb_ids_raw) if isinstance(kb_ids_raw, str) else (kb_ids_raw or [])
+    rag_provider = VectorStoreContextProvider(kb_ids=kb_ids, session_id=session_id)
+    memory_provider = MemoryContextProvider(agent_id=agent_id, user_id=str(agent.get("user_id", "")), db=mongo_db, db_type="mongo") if _memory_enabled else None
+
+    class HeadlessSessionContextMongo:
+        def __init__(self, input_messages):
+            self.input_messages = input_messages
+            self.instructions = []
+        def extend_instructions(self, source_id, instruction):
+            self.instructions.append(instruction)
+
+    ctx = HeadlessSessionContextMongo(messages)
+    if memory_provider:
+        await memory_provider.before_run(agent=agent, session=None, context=ctx, state={})
+    if rag_provider:
+        await rag_provider.before_run(agent=agent, session=None, context=ctx, state={})
+
+    injected_instructions = "\n\n".join(ctx.instructions) if ctx.instructions else ""
+
     system_prompt = (
         (agent.get("system_prompt") or "")
-        + _build_memory_injection_dicts(_agent_memories)
+        + (f"\n\n{injected_instructions}" if injected_instructions else _build_memory_injection_dicts(_agent_memories))
         + ("\n\nReturn only valid JSON matching the supplied response schema. Do not wrap it in markdown or add commentary." if response_schema else "\n\nIMPORTANT: You are responding via WhatsApp. Reply in plain text only. Do NOT use artifacts, XML tags, or markdown code blocks. Keep responses concise and conversational. If a tool returns an error, tell the user honestly what went wrong. Messages may include a [From: Name] prefix indicating the sender's WhatsApp display name — use it to address them personally when appropriate.")
         + (_SANDBOX_SYSTEM_HINT if _sandbox_active else "")
     )

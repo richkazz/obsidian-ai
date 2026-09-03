@@ -2,6 +2,8 @@ import base64
 import hashlib
 import json
 import os
+import re
+from typing import Any
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 
@@ -28,6 +30,36 @@ def decrypt_payload(encrypted_data: str) -> dict:
     decrypted = unpad(cipher.decrypt(ciphertext), AES.block_size)
 
     return json.loads(decrypted.decode("utf-8"))
+
+
+# ── Telemetry & Trace Sanitization ──────────────────────────────────────────────
+
+_BEARER_KEY_RE = re.compile(
+    r"(Bearer\s+|x-api-key\s*:\s*|authorization\s*:\s*|gAAAAA)[A-Za-z0-9_\-\.\=]+",
+    re.IGNORECASE,
+)
+_SENSITIVE_FIELD_RE = re.compile(
+    r'"(api_key|authorization|x-api-key|x-api-secret|secret|password|token|ciphertext|fernet_key)":\s*"[^"]*"',
+    re.IGNORECASE,
+)
+
+
+def sanitize_trace_data(data: Any) -> str:
+    """
+    Sanitize trace attribute data before exporting or storing in trace_spans table.
+    Strips Authorization headers, X-API-Key, X-API-Secret, and Fernet ciphertexts.
+    """
+    if data is None:
+        return ""
+    if not isinstance(data, str):
+        try:
+            data = json.dumps(data)
+        except Exception:
+            data = str(data)
+
+    data = _SENSITIVE_FIELD_RE.sub(r'"\1": "[REDACTED]"', data)
+    data = _BEARER_KEY_RE.sub(r"\1[REDACTED]", data)
+    return data
 
 
 def _evp_bytes_to_key(password: bytes, salt: bytes, key_len: int, iv_len: int):

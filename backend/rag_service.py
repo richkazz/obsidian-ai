@@ -376,3 +376,96 @@ class RAGService:
             chunks.append(text[start:end])
             start = end - overlap
         return chunks
+
+
+# ── MAF ContextProvider Integration ──────────────────────────────────────────
+
+try:
+    from agent_framework import ContextProvider, SessionContext, AgentSession, SupportsAgentRun
+    from agent_framework import Message as MAFMessage
+except ImportError:
+    ContextProvider = object
+    SessionContext = None
+    AgentSession = None
+    SupportsAgentRun = None
+    MAFMessage = None
+
+
+class VectorStoreContextProvider(ContextProvider if ContextProvider != object else object):
+    """
+    MAF ContextProvider bridging RAGService into MAF agent context loading.
+    Extracts query from user input and injects grounded context chunks before agent invocation.
+    Includes platform fallback: if Qdrant / Gemini embedding fails, degrades gracefully.
+    """
+
+    def __init__(
+        self,
+        kb_ids: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
+        top_k: int = 5,
+        source_id: str = "vector_rag",
+    ):
+        if ContextProvider != object:
+            super().__init__(source_id=source_id)
+        else:
+            self.source_id = source_id
+        self.kb_ids = kb_ids or []
+        self.session_id = session_id
+        self.top_k = top_k
+
+    async def before_run(
+        self,
+        *,
+        agent: Any,
+        session: Any,
+        context: Any,
+        state: Dict[str, Any],
+    ) -> None:
+        """Fetch grounded vector RAG context chunks and extend context instructions/messages."""
+        if not context or not context.input_messages:
+            return
+
+        query_text = ""
+        for msg in reversed(context.input_messages):
+            txt = getattr(msg, "text_content", None) or getattr(msg, "content", "")
+            if isinstance(txt, str) and txt.strip():
+                query_text = txt.strip()
+                break
+
+        if not query_text:
+            return
+
+        retrieved_results: List[Dict[str, Any]] = []
+
+        # Session RAG search
+        if self.session_id:
+            try:
+                res = await RAGService.search_async(self.session_id, query_text, top_k=self.top_k)
+                retrieved_results.extend(res)
+            except Exception as e:
+                logger.warning("VectorStoreContextProvider session search fallback: %s", e)
+
+        # KB RAG search
+        for kb_id in self.kb_ids:
+            try:
+                res = await RAGService.search_kb_async(str(kb_id), query_text, top_k=self.top_k)
+                retrieved_results.extend(res)
+            except Exception as e:
+                logger.warning("VectorStoreContextProvider KB search fallback for kb %s: %s", kb_id, e)
+
+        if not retrieved_results:
+            return
+
+        formatted_chunks = []
+        for i, hit in enumerate(retrieved_results[: self.top_k], 1):
+            text = hit.get("text", "")
+            if text:
+                formatted_chunks.append(f"[{i}] {text}")
+
+        if formatted_chunks:
+            instruction_text = (
+                "Grounded Knowledge Base Context:\n"
+                + "\n\n".join(formatted_chunks)
+                + "\n\nUse the above grounded knowledge to inform your response."
+            )
+            context.extend_instructions(self.source_id, instruction_text)
