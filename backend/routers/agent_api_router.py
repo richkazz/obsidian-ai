@@ -92,23 +92,38 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
     input_schema = db.get(SchemaVersion, config.input_schema_version_id); output_schema = db.get(SchemaVersion, config.output_schema_version_id)
     input_errors = validate_json_schema(json.loads(input_schema.canonical_schema_json), body.input)
     if input_errors: raise HTTPException(422, detail={"code": "INPUT_SCHEMA_VALIDATION_FAILED", "request_id": request_id, "details": input_errors})
-    # The existing headless runner remains the single agent runtime.  Its text
-    # response is parsed and independently validated before it can leave this API.
+    # Output validation & single bounded repair attempt
+    from models import Session as ChatSession, Message
+    from services.agent_runner import run_agent_headless
+    agent = db.get(Agent, agent_id)
+    session = ChatSession(user_id=agent.user_id, title="API invocation", entity_type="agent", entity_id=agent_id)
+    db.add(session); db.flush(); db.add(Message(session_id=session.id, role="user", content=json.dumps(body.input))); db.commit()
+
+    output = None
+    output_schema_dict = json.loads(output_schema.canonical_schema_json)
+
     try:
-        from models import Session as ChatSession, Message
-        from services.agent_runner import run_agent_headless
-        agent = db.get(Agent, agent_id)
-        session = ChatSession(user_id=agent.user_id, title="API invocation", entity_type="agent", entity_id=agent_id)
-        db.add(session); db.flush(); db.add(Message(session_id=session.id, role="user", content=json.dumps(body.input))); db.commit()
         raw = await run_agent_headless(session.id, agent_id, db)
         output = json.loads(raw or "")
-    except (json.JSONDecodeError, ValueError, TypeError):
-        db.add(APIRequest(request_id=request_id, application_id=int(key.application_id), api_key_id=int(key.api_key_id), agent_id=agent_id, agent_version_id=config.published_version_id, status="failed", error_code="OUTPUT_SCHEMA_VALIDATION_FAILED", duration_ms=int((time.monotonic()-started)*1000))); db.commit()
-        raise HTTPException(502, detail={"code": "OUTPUT_SCHEMA_VALIDATION_FAILED", "message": "Agent did not produce valid JSON", "request_id": request_id, "details": []})
-    errors = validate_json_schema(json.loads(output_schema.canonical_schema_json), output)
+        errors = validate_json_schema(output_schema_dict, output)
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
+        errors = [f"Output is not valid JSON: {str(e)}"]
+
+    # If validation failed on initial attempt, execute bounded repair attempt (exactly 1 retry)
+    if errors:
+        try:
+            repair_prompt = f"The previous output failed schema validation with errors: {errors}. Please return a corrected valid JSON object matching the required schema."
+            db.add(Message(session_id=session.id, role="user", content=repair_prompt))
+            db.commit()
+            raw_repair = await run_agent_headless(session.id, agent_id, db)
+            output = json.loads(raw_repair or "")
+            errors = validate_json_schema(output_schema_dict, output)
+        except Exception as e:
+            errors = [f"Repair attempt failed: {str(e)}"]
+
     if errors:
         db.add(APIRequest(request_id=request_id, application_id=int(key.application_id), api_key_id=int(key.api_key_id), agent_id=agent_id, agent_version_id=config.published_version_id, status="failed", error_code="OUTPUT_SCHEMA_VALIDATION_FAILED", duration_ms=int((time.monotonic()-started)*1000))); db.commit()
-        raise HTTPException(502, detail={"code": "OUTPUT_SCHEMA_VALIDATION_FAILED", "request_id": request_id, "details": errors})
+        raise HTTPException(status_code=502, detail={"error": {"code": "OUTPUT_SCHEMA_VALIDATION_FAILED", "message": "Agent output failed schema validation", "request_id": request_id, "details": errors}})
     db.add(APIRequest(request_id=request_id, application_id=int(key.application_id), api_key_id=int(key.api_key_id), agent_id=agent_id, agent_version_id=config.published_version_id, status="completed", duration_ms=int((time.monotonic()-started)*1000))); db.commit()
     version = db.get(AgentVersion, config.published_version_id)
     return {"request_id": request_id, "agent_id": str(agent_id), "agent_version": version.version_number if version else None, "input_schema_version": input_schema.version_number, "output_schema_version": output_schema.version_number, "status": "completed", "output": output}

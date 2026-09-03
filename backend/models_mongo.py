@@ -212,6 +212,262 @@ class LLMProviderCollection:
         data["_id"] = result.inserted_id
         return data
 
+
+# ============================================================================
+# External Agent API Platform Collections
+# ============================================================================
+
+class ApplicationCollection:
+    collection_name = "applications"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index("user_id")
+
+    @classmethod
+    async def find_by_user(cls, db, user_id: str) -> list[dict]:
+        collection = db[cls.collection_name]
+        cursor = collection.find({"user_id": user_id})
+        return await cursor.to_list(length=1000)
+
+    @classmethod
+    async def find_by_id(cls, db, app_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"_id": ObjectId(app_id)})
+
+    @classmethod
+    async def create(cls, db, data: dict) -> dict:
+        collection = db[cls.collection_name]
+        data.setdefault("status", "active")
+        data.setdefault("created_at", datetime.utcnow())
+        result = await collection.insert_one(data)
+        data["_id"] = result.inserted_id
+        return data
+
+    @classmethod
+    async def update(cls, db, app_id: str, updates: dict) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        updates["updated_at"] = datetime.utcnow()
+        return await collection.find_one_and_update(
+            {"_id": ObjectId(app_id)},
+            {"$set": updates},
+            return_document=True,
+        )
+
+
+class APIKeyCollection:
+    collection_name = "api_keys"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index("key_prefix", unique=True)
+        await collection.create_index("application_id")
+        await collection.create_index("revoked_at")
+        await collection.create_index("expires_at")
+
+    @classmethod
+    async def find_by_prefix(cls, db, prefix: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"key_prefix": prefix})
+
+    @classmethod
+    async def find_by_application(cls, db, application_id: str) -> list[dict]:
+        collection = db[cls.collection_name]
+        cursor = collection.find({"application_id": application_id})
+        return await cursor.to_list(length=1000)
+
+    @classmethod
+    async def find_by_id(cls, db, key_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"_id": ObjectId(key_id)})
+
+    @classmethod
+    async def create(cls, db, data: dict) -> dict:
+        collection = db[cls.collection_name]
+        data.setdefault("created_at", datetime.utcnow())
+        result = await collection.insert_one(data)
+        data["_id"] = result.inserted_id
+        return data
+
+    @classmethod
+    async def update(cls, db, key_id: str, updates: dict) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one_and_update(
+            {"_id": ObjectId(key_id)},
+            {"$set": updates},
+            return_document=True,
+        )
+
+
+class ApplicationAgentAccessCollection:
+    collection_name = "application_agent_access"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index(
+            [("application_id", 1), ("agent_id", 1)],
+            unique=True,
+        )
+
+    @classmethod
+    async def find_access(cls, db, application_id: str, agent_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"application_id": application_id, "agent_id": agent_id})
+
+    @classmethod
+    async def find_by_application(cls, db, application_id: str) -> list[dict]:
+        collection = db[cls.collection_name]
+        cursor = collection.find({"application_id": application_id, "revoked_at": None})
+        return await cursor.to_list(length=1000)
+
+    @classmethod
+    async def find_by_agent(cls, db, agent_id: str) -> list[dict]:
+        collection = db[cls.collection_name]
+        cursor = collection.find({"agent_id": agent_id, "revoked_at": None})
+        return await cursor.to_list(length=1000)
+
+    @classmethod
+    async def upsert_access(cls, db, application_id: str, agent_id: str, updates: dict) -> dict:
+        collection = db[cls.collection_name]
+        updates.setdefault("created_at", datetime.utcnow())
+        return await collection.find_one_and_update(
+            {"application_id": application_id, "agent_id": agent_id},
+            {"$set": updates},
+            upsert=True,
+            return_document=True,
+        )
+
+
+class AgentAPIConfigCollection:
+    collection_name = "agent_api_configs"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index("agent_id", unique=True)
+        await collection.create_index("owner_application_id")
+
+    @classmethod
+    async def find_by_agent(cls, db, agent_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"agent_id": agent_id})
+
+    @classmethod
+    async def upsert_config(cls, db, agent_id: str, updates: dict) -> dict:
+        collection = db[cls.collection_name]
+        updates["updated_at"] = datetime.utcnow()
+        return await collection.find_one_and_update(
+            {"agent_id": agent_id},
+            {"$set": updates, "$setOnInsert": {"created_at": datetime.utcnow()}},
+            upsert=True,
+            return_document=True,
+        )
+
+
+class SchemaCollection:
+    collection_name = "schemas"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index("user_id")
+
+    @classmethod
+    async def find_by_user(cls, db, user_id: str) -> list[dict]:
+        collection = db[cls.collection_name]
+        cursor = collection.find({"user_id": user_id})
+        return await cursor.to_list(length=1000)
+
+    @classmethod
+    async def find_by_id(cls, db, schema_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"_id": ObjectId(schema_id)})
+
+    @classmethod
+    async def create(cls, db, data: dict) -> dict:
+        collection = db[cls.collection_name]
+        data.setdefault("created_at", datetime.utcnow())
+        result = await collection.insert_one(data)
+        data["_id"] = result.inserted_id
+        return data
+
+
+class SchemaVersionCollection:
+    collection_name = "schema_versions"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index([("schema_id", 1), ("version_number", -1)])
+
+    @classmethod
+    async def find_by_schema(cls, db, schema_id: str) -> list[dict]:
+        collection = db[cls.collection_name]
+        cursor = collection.find({"schema_id": schema_id}).sort("version_number", -1)
+        return await cursor.to_list(length=1000)
+
+    @classmethod
+    async def find_by_id(cls, db, version_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"_id": ObjectId(version_id)})
+
+    @classmethod
+    async def get_latest_version(cls, db, schema_id: str) -> Optional[dict]:
+        collection = db[cls.collection_name]
+        return await collection.find_one({"schema_id": schema_id}, sort=[("version_number", -1)])
+
+    @classmethod
+    async def create(cls, db, data: dict) -> dict:
+        collection = db[cls.collection_name]
+        data.setdefault("created_at", datetime.utcnow())
+        result = await collection.insert_one(data)
+        data["_id"] = result.inserted_id
+        return data
+
+
+class APIRequestCollection:
+    collection_name = "api_requests"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index("request_id", unique=True)
+        await collection.create_index("application_id")
+        await collection.create_index("api_key_id")
+        await collection.create_index("agent_id")
+
+    @classmethod
+    async def create(cls, db, data: dict) -> dict:
+        collection = db[cls.collection_name]
+        data.setdefault("created_at", datetime.utcnow())
+        result = await collection.insert_one(data)
+        data["_id"] = result.inserted_id
+        return data
+
+
+class AuditEventCollection:
+    collection_name = "audit_events"
+
+    @classmethod
+    async def create_indexes(cls, db):
+        collection = db[cls.collection_name]
+        await collection.create_index("actor_user_id")
+        await collection.create_index("application_id")
+        await collection.create_index("resource_id")
+        await collection.create_index("event_type")
+        await collection.create_index("created_at")
+
+    @classmethod
+    async def create(cls, db, data: dict) -> dict:
+        collection = db[cls.collection_name]
+        data.setdefault("created_at", datetime.utcnow())
+        result = await collection.insert_one(data)
+        data["_id"] = result.inserted_id
+        return data
+
     @classmethod
     async def update(cls, db, provider_id: str, user_id: str, updates: dict) -> Optional[dict]:
         collection = db[cls.collection_name]
