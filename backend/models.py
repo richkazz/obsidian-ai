@@ -656,3 +656,15 @@ class APIRequest(Base):
     error_code = Column(String, nullable=True)
     duration_ms = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+    id = Column(Integer, primary_key=True, index=True)
+    actor = Column(String, nullable=False, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
+    resource_type = Column(String, nullable=False)
+    resource_id = Column(String, nullable=False, index=True)
+    event_type = Column(String, nullable=False, index=True)
+    details_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

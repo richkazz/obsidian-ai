@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
@@ -23,8 +24,8 @@ import {
 import Link from "next/link"
 import { apiClient } from "@/lib/api-client"
 import { usePlaygroundStore } from "@/stores/playground-store"
-import type { Agent, ToolDefinition, MCPServer, KnowledgeBase, AgentMemory, AgentVersion, AgentConfigSnapshot, OptimizationRun, EvalSuite, PromptVaultEntry, Skill } from "@/types/playground"
-import { Loader2, CheckCircle2, Circle, Server, BookOpen, ExternalLink, ShieldAlert, Brain, Trash2, Wrench, Sparkles, History, RotateCcw, ChevronDown, ChevronRight, Zap, CheckCheck, X, Terminal, Play, Square, BookMarked, GraduationCap } from "lucide-react"
+import type { Agent, ToolDefinition, MCPServer, KnowledgeBase, AgentMemory, AgentVersion, AgentConfigSnapshot, OptimizationRun, EvalSuite, PromptVaultEntry, Skill, Application, AgentSchema } from "@/types/playground"
+import { Loader2, CheckCircle2, Circle, Server, BookOpen, ExternalLink, ShieldAlert, Brain, Trash2, Wrench, Sparkles, History, RotateCcw, ChevronDown, ChevronRight, Zap, CheckCheck, X, Terminal, Play, Square, BookMarked, GraduationCap, Globe } from "lucide-react"
 import { AppRoutes } from "@/app/api/routes"
 
 // ─── Version diff helpers ────────────────────────────────────────────────────
@@ -263,6 +264,17 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
   const [selectedOptVaultId, setSelectedOptVaultId] = useState<string>("")
   const [updatingVault, setUpdatingVault] = useState(false)
 
+  // API / Deployment state
+  const [apiOwnerAppId, setApiOwnerAppId] = useState<string>("")
+  const [apiInputSchemaId, setApiInputSchemaId] = useState<string>("")
+  const [apiOutputSchemaId, setApiOutputSchemaId] = useState<string>("")
+  const [apiScopes, setApiScopes] = useState<string>("agent:invoke")
+  const [apiRateLimit, setApiRateLimit] = useState<string>("60/minute")
+  const [pubState, setPubState] = useState<string>("draft")
+  const [apps, setApps] = useState<Application[]>([])
+  const [schemas, setSchemas] = useState<AgentSchema[]>([])
+  const [savingApi, setSavingApi] = useState(false)
+
   useEffect(() => {
     if (!open) return
     // Load available tools, MCP servers, and knowledge bases
@@ -270,6 +282,10 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
     apiClient.listMCPServers().then(setAvailableMCPServers).catch(() => {})
     apiClient.listKnowledgeBases().then(setAvailableKBs).catch(() => {})
     apiClient.listSkills().then(setAvailableSkills).catch(() => {})
+
+    // Load applications and schemas for API deployment tab
+    apiClient.listApplications().then(setApps).catch(() => {})
+    apiClient.listSchemas().then(setSchemas).catch(() => {})
 
     // Load eval suites for optimizer selector
     apiClient.listEvalSuites().then(setEvalSuites).catch(() => {})
@@ -1089,6 +1105,122 @@ export function AgentDialog({ open, onOpenChange, agent, onSaved }: AgentDialogP
               </div>
             )}
           </div>
+
+          {/* API / Deployment Section (edit mode only) */}
+          {isEditing && agent && (
+            <div className="grid gap-3 border rounded-md p-3 bg-muted/20">
+              <Label className="flex items-center gap-1.5 text-sm font-semibold">
+                <Globe className="h-4 w-4 text-blue-500" />
+                API & External Deployment
+                <Badge variant="outline" className="ml-auto uppercase text-[10px]">{pubState}</Badge>
+              </Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Input Schema</Label>
+                  <Select value={apiInputSchemaId} onValueChange={setApiInputSchemaId}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Select Input Schema" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {schemas.filter(s => s.direction === "input").map(s => (
+                        <SelectItem key={s.id} value={s.latest_version?.id || s.id}>
+                          {s.name} (v{s.latest_version?.version_number || 1})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Output Schema</Label>
+                  <Select value={apiOutputSchemaId} onValueChange={setApiOutputSchemaId}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Select Output Schema" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {schemas.filter(s => s.direction === "output").map(s => (
+                        <SelectItem key={s.id} value={s.latest_version?.id || s.id}>
+                          {s.name} (v{s.latest_version?.version_number || 1})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Owner Application</Label>
+                  <Select value={apiOwnerAppId} onValueChange={setApiOwnerAppId}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Select Application" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {apps.map(a => (
+                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Rate Limit</Label>
+                  <Input
+                    value={apiRateLimit}
+                    onChange={(e) => setApiRateLimit(e.target.value)}
+                    placeholder="60/minute"
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={savingApi}
+                  onClick={async () => {
+                    if (!agent) return
+                    setSavingApi(true)
+                    try {
+                      const res = await apiClient.configureAgentAPI(agent.id, {
+                        owner_application_id: apiOwnerAppId || undefined,
+                        input_schema_version_id: apiInputSchemaId || undefined,
+                        output_schema_version_id: apiOutputSchemaId || undefined,
+                        required_scopes: apiScopes.split(",").map(s => s.trim()),
+                        rate_limit: apiRateLimit || undefined,
+                      })
+                      setPubState(res.publication_state)
+                    } catch (err: any) {
+                      console.error("Failed to save API config:", err)
+                    } finally {
+                      setSavingApi(false)
+                    }
+                  }}
+                  className="h-7 text-xs"
+                >
+                  Save API Config
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={savingApi}
+                  onClick={async () => {
+                    if (!agent) return
+                    setSavingApi(true)
+                    try {
+                      const res = await apiClient.publishAgentAPI(agent.id)
+                      setPubState(res.publication_state)
+                    } catch (err: any) {
+                      console.error("Failed to publish agent:", err)
+                    } finally {
+                      setSavingApi(false)
+                    }
+                  }}
+                  className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  Publish API Version
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Allow Tool Creation Section */}
           <div className="grid gap-2">

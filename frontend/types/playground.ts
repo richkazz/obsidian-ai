@@ -902,3 +902,95 @@ export interface AsyncJobItem {
   created_at: string | null
   resolved_at: string | null
 }
+
+// ── External Agent API Platform / Developer ─────────────────────────────────
+
+export interface Application {
+  id: string
+  name: string
+  description?: string | null
+  status: "active" | "inactive" | string
+  default_scopes: string[]
+  metadata?: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface CreateApplicationRequest {
+  name: string
+  description?: string
+  default_scopes?: string[]
+  metadata?: Record<string, unknown>
+}
+
+export interface ApplicationAPIKey {
+  id: string
+  name: string
+  key_prefix: string
+  scopes: string[]
+  expires_at?: string | null
+  revoked_at?: string | null
+  last_used_at?: string | null
+  created_at: string
+}
+
+export interface CreateApplicationKeyRequest {
+  name: string
+  scopes: string[]
+  expires_at?: string | null
+}
+
+export interface CreateApplicationKeyResponse extends ApplicationAPIKey {
+  api_key: string
+  message: string
+}
+
+export interface AgentShareRequest {
+  application_id: string
+  permissions: string[]
+}
+
+export interface SchemaVersion {
+  id: string
+  schema_id: string
+  version_number: number
+  canonical_schema: Record<string, unknown>
+  source_format: string
+  source_definition?: string | null
+  compatibility_mode?: string | null
+  created_at: string
+}
+
+export interface AgentSchema {
+  id: string
+  name: string
+  direction: "input" | "output"
+  created_at: string
+  latest_version?: SchemaVersion | null
+}
+
+export interface CreateSchemaRequest {
+  name: string
+  direction: "input" | "output"
+  canonical_schema: Record<string, unknown>
+  source_format?: string
+  source_definition?: string
+  compatibility_mode?: string
+}
+
+export interface AgentAPIConfig {
+  agent_id: string
+  publication_state: "draft" | "testing" | "published" | "deprecated" | "retired"
+  owner_application_id?: string | null
+  input_schema_version_id?: string | null
+  output_schema_version_id?: string | null
+  required_scopes: string[]
+  rate_limit?: string | null
+}
+
+export interface ConfigureAgentAPIRequest {
+  owner_application_id?: string | null
+  input_schema_version_id?: string | null
+  output_schema_version_id?: string | null
+  required_scopes: string[]
+  rate_limit?: string | null
+}

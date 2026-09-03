@@ -57,6 +57,17 @@ import type {
   HITLApprovalItem,
   AsyncJobItem,
   Skill,
+  Application,
+  CreateApplicationRequest,
+  ApplicationAPIKey,
+  CreateApplicationKeyRequest,
+  CreateApplicationKeyResponse,
+  AgentShareRequest,
+  AgentSchema,
+  SchemaVersion,
+  CreateSchemaRequest,
+  AgentAPIConfig,
+  ConfigureAgentAPIRequest,
 } from "@/types/playground"
 
 interface ApiResponse<T> {
@@ -931,6 +942,82 @@ class ApiClient {
 
   async markAsyncJobSeen(jobId: string): Promise<void> {
     await this.request(AppRoutes.AsyncJobMarkSeen(jobId), { method: "POST" })
+  }
+
+  // ============= Developer / Applications & API Keys =============
+  async listApplications(): Promise<Application[]> {
+    return this.request<Application[]>(AppRoutes.ListApplications())
+  }
+
+  async createApplication(data: CreateApplicationRequest): Promise<Application> {
+    return this.request<Application>(AppRoutes.CreateApplication(), {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async listApplicationKeys(appId: string): Promise<ApplicationAPIKey[]> {
+    return this.request<ApplicationAPIKey[]>(AppRoutes.ListApplicationKeys(appId))
+  }
+
+  async createApplicationKey(appId: string, data: CreateApplicationKeyRequest): Promise<CreateApplicationKeyResponse> {
+    return this.request<CreateApplicationKeyResponse>(AppRoutes.CreateApplicationKey(appId), {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async revokeApplicationKey(appId: string, keyId: string): Promise<ApplicationAPIKey> {
+    return this.request<ApplicationAPIKey>(AppRoutes.RevokeApplicationKey(appId, keyId), {
+      method: "POST",
+    })
+  }
+
+  async shareAgentAccess(agentId: string, data: AgentShareRequest): Promise<{ application_id: string; agent_id: string; permissions: string[] }> {
+    return this.request(AppRoutes.ShareAgentAccess(agentId), {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async configureAgentAPI(agentId: string, data: ConfigureAgentAPIRequest): Promise<AgentAPIConfig> {
+    return this.request<AgentAPIConfig>(AppRoutes.ConfigureAgentAPI(agentId), {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async publishAgentAPI(agentId: string): Promise<{ agent_id: string; agent_version: number; publication_state: string }> {
+    return this.request(AppRoutes.PublishAgentAPI(agentId), { method: "POST" })
+  }
+
+  async transitionAgentAPI(agentId: string, action: string): Promise<{ agent_id: string; publication_state: string }> {
+    return this.request(AppRoutes.TransitionAgentAPI(agentId, action), { method: "POST" })
+  }
+
+  async listSchemas(): Promise<AgentSchema[]> {
+    return this.request<AgentSchema[]>(AppRoutes.ListSchemas())
+  }
+
+  async createSchema(data: CreateSchemaRequest): Promise<AgentSchema> {
+    return this.request<AgentSchema>(AppRoutes.CreateSchema(), {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async createSchemaVersion(schemaId: string, data: CreateSchemaRequest): Promise<SchemaVersion> {
+    return this.request<SchemaVersion>(AppRoutes.CreateSchemaVersion(schemaId), {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async validateSchema(schemaId: string, versionId: string, payload: object): Promise<{ valid: boolean; errors: any[] }> {
+    return this.request(AppRoutes.ValidateSchema(schemaId, versionId), {
+      method: "POST",
+      body: JSON.stringify({ payload }),
+    })
   }
 }
 

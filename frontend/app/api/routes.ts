@@ -221,4 +221,20 @@ export const AppRoutes = {
     GetSkill                : (id: string) => `/api/skills/${id}`,
     UpdateSkill             : (id: string) => `/api/skills/${id}`,
     DeleteSkill             : (id: string) => `/api/skills/${id}`,
+
+    // External Agent API Platform / Developer
+    ListApplications        : () => "/api/v1/applications",
+    CreateApplication       : () => "/api/v1/applications",
+    GetApplication          : (id: string) => `/api/v1/applications/${id}`,
+    ListApplicationKeys     : (appId: string) => `/api/v1/applications/${appId}/keys`,
+    CreateApplicationKey    : (appId: string) => `/api/v1/applications/${appId}/keys`,
+    RevokeApplicationKey    : (appId: string, keyId: string) => `/api/v1/applications/${appId}/keys/${keyId}/revoke`,
+    ShareAgentAccess        : (agentId: string) => `/api/v1/applications/agents/${agentId}/shares`,
+    ConfigureAgentAPI       : (agentId: string) => `/api/v1/agents/${agentId}/api-config`,
+    PublishAgentAPI         : (agentId: string) => `/api/v1/agents/${agentId}/publish`,
+    TransitionAgentAPI      : (agentId: string, action: string) => `/api/v1/agents/${agentId}/${action}`,
+    ListSchemas             : () => "/api/v1/schemas",
+    CreateSchema            : () => "/api/v1/schemas",
+    CreateSchemaVersion     : (schemaId: string) => `/api/v1/schemas/${schemaId}/versions`,
+    ValidateSchema          : (schemaId: string, versionId: string) => `/api/v1/schemas/${schemaId}/versions/${versionId}/validate`,
 }

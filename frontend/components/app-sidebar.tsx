@@ -20,6 +20,7 @@ import {
   Key,
   BookMarked,
   Sparkles,
+  Code2,
   Moon,
   Sun,
 } from "lucide-react"
@@ -55,6 +56,7 @@ const toolItems: NavItem[] = [
   { label: "Evals",        icon: FlaskConical,  path: Routes.EVALS },
   { label: "Observability",icon: BarChart2,     path: Routes.OBSERVABILITY },
   { label: "Channels",     icon: MessageCircle, path: Routes.CHANNELS },
+  { label: "Developer",    icon: Code2,         path: Routes.DEVELOPER },
 ]
 
 const systemItems: NavItem[] = [

@@ -26,6 +26,7 @@ export const Routes = {
   SECRETS         : '/secrets',
   PROMPTS         : '/prompts',
   SKILLS          : '/skills',
+  DEVELOPER       : '/developer',
 } as const;
 
 
@@ -107,6 +108,12 @@ export const ProtectedRoutes: RouteConfig[] = [
     label: 'Skills',
     allowedRoles: ['admin', 'user'],
     description: 'Reusable Claude Skills (Anthropic Claude agents only)',
+  },
+  {
+    path: Routes.DEVELOPER,
+    label: 'Developer',
+    allowedRoles: ['admin', 'user'],
+    description: 'API Applications, Keys, Schemas, and Developer Docs',
   },
 ];
 
