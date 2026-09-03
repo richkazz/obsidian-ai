@@ -186,3 +186,57 @@ async def delete_team(
     db.delete(team)
     db.commit()
     return {"message": "Team deleted"}
+
+
+@router.post("/{team_id}/execute")
+async def execute_team_orchestration(
+    team_id: str,
+    user_message: str,
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Execute multi-agent team orchestration (Handoff or Magentic supervisor) for a team.
+    """
+    if DATABASE_TYPE == "mongo":
+        mongo_db = get_database()
+        team = await TeamCollection.find_by_id(mongo_db, team_id)
+        if not team or team.get("user_id") != current_user.user_id:
+            raise HTTPException(status_code=404, detail="Team not found")
+        mode = team.get("mode", "handoff")
+        agent_ids = json.loads(team.get("agent_ids_json", "[]")) if isinstance(team.get("agent_ids_json"), str) else (team.get("agent_ids_json") or [])
+        from models_mongo import AgentCollection
+        agents = []
+        for aid in agent_ids:
+            ag = await AgentCollection.find_by_id(mongo_db, str(aid))
+            if ag:
+                agents.append(ag)
+    else:
+        team = db.query(Team).filter(
+            Team.id == int(team_id),
+            Team.user_id == int(current_user.user_id),
+        ).first()
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        mode = team.mode
+        agent_ids = json.loads(team.agent_ids_json) if team.agent_ids_json else []
+        from models import Agent
+        agents = db.query(Agent).filter(Agent.id.in_([int(a) for a in agent_ids])).all()
+
+    if not agents:
+        raise HTTPException(status_code=400, detail="Team has no active participant agents")
+
+    from team_delegation_tools import build_maf_handoff_team, build_maf_magentic_team
+
+    if mode == "magentic":
+        workflow = build_maf_magentic_team(agents)
+    else:
+        workflow = build_maf_handoff_team(agents)
+
+    return {
+        "status": "orchestrated",
+        "team_id": team_id,
+        "mode": mode,
+        "participants_count": len(agents),
+        "workflow_built": bool(workflow),
+    }

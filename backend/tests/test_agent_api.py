@@ -183,6 +183,7 @@ def test_external_session_is_application_bound(setup_data):
 
         other_app = Application(user_id=setup_data["user"].id, name="Other", status="active")
         db.add(other_app)
+        db.flush()
         other_prefix, other_secret, other_full_key = generate_api_key()
         db.add(APIKey(
             application_id=other_app.id,

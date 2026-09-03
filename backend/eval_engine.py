@@ -179,6 +179,22 @@ async def run_eval_suite_sqlite(
         run.completed_at = datetime.now(timezone.utc)
         db.commit()
 
+        # Record OTel trace span for the eval run
+        try:
+            from models import TraceSpan
+            from crypto_utils import sanitize_trace_data
+            span = TraceSpan(
+                span_type="eval_run",
+                name=f"eval_suite_{suite_id}",
+                status="success",
+                input_data=sanitize_trace_data({"suite_id": suite_id, "cases_count": total}),
+                output_data=sanitize_trace_data({"score": overall_score, "passed": passed_count, "results": results[:5]}),
+            )
+            db.add(span)
+            db.commit()
+        except Exception as e:
+            logger.warning("Failed to record eval_run trace span: %s", e)
+
     except Exception as e:
         logger.error("Eval run %s failed: %s", run_id, e)
         try:
@@ -331,6 +347,20 @@ async def run_eval_suite_mongo(
             "status": "completed",
             "completed_at": datetime.now(timezone.utc),
         })
+
+        # Record OTel trace span for the eval run (Mongo)
+        try:
+            from models_mongo import TraceSpanCollection
+            from crypto_utils import sanitize_trace_data
+            await TraceSpanCollection.create(mongo_db, {
+                "span_type": "eval_run",
+                "name": f"eval_suite_{suite_id}",
+                "status": "success",
+                "input_data": sanitize_trace_data({"suite_id": suite_id, "cases_count": total}),
+                "output_data": sanitize_trace_data({"score": overall_score, "passed": passed_count, "results": results[:5]}),
+            })
+        except Exception as e:
+            logger.warning("Failed to record eval_run trace span (mongo): %s", e)
 
     except Exception as e:
         logger.error("Eval run %s (mongo) failed: %s", run_id, e)
