@@ -752,6 +752,130 @@ def _run_sqlite_migrations(engine):
             except Exception:
                 conn.rollback()
 
+        # External Agent API platform tables
+        try:
+            conn.execute(sqlalchemy.text("""
+                CREATE TABLE IF NOT EXISTS applications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    default_scopes_json TEXT,
+                    metadata_json TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME
+                )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            conn.execute(sqlalchemy.text("""
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    key_prefix TEXT NOT NULL UNIQUE,
+                    secret_hash TEXT NOT NULL,
+                    scopes_json TEXT NOT NULL,
+                    expires_at DATETIME,
+                    revoked_at DATETIME,
+                    last_used_at DATETIME,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            conn.execute(sqlalchemy.text("""
+                CREATE TABLE IF NOT EXISTS application_agent_access (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+                    agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                    permissions_json TEXT NOT NULL,
+                    granted_by INTEGER NOT NULL REFERENCES users(id),
+                    revoked_at DATETIME,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            conn.execute(sqlalchemy.text("""
+                CREATE TABLE IF NOT EXISTS agent_api_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE UNIQUE,
+                    owner_application_id INTEGER REFERENCES applications(id),
+                    publication_state TEXT NOT NULL DEFAULT 'draft',
+                    published_version_id INTEGER REFERENCES agent_versions(id),
+                    input_schema_version_id INTEGER REFERENCES schema_versions(id),
+                    output_schema_version_id INTEGER REFERENCES schema_versions(id),
+                    required_scopes_json TEXT NOT NULL DEFAULT '["agent:invoke"]',
+                    rate_limit TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME
+                )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            conn.execute(sqlalchemy.text("""
+                CREATE TABLE IF NOT EXISTS schemas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    name TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            conn.execute(sqlalchemy.text("""
+                CREATE TABLE IF NOT EXISTS schema_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    schema_id INTEGER NOT NULL REFERENCES schemas(id) ON DELETE CASCADE,
+                    version_number INTEGER NOT NULL,
+                    canonical_schema_json TEXT NOT NULL,
+                    source_format TEXT NOT NULL DEFAULT 'json_schema',
+                    source_definition TEXT,
+                    compatibility_mode TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            conn.execute(sqlalchemy.text("""
+                CREATE TABLE IF NOT EXISTS api_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id TEXT NOT NULL UNIQUE,
+                    application_id INTEGER NOT NULL REFERENCES applications(id),
+                    api_key_id INTEGER NOT NULL REFERENCES api_keys(id),
+                    agent_id INTEGER NOT NULL REFERENCES agents(id),
+                    agent_version_id INTEGER REFERENCES agent_versions(id),
+                    status TEXT NOT NULL,
+                    error_code TEXT,
+                    duration_ms INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
 
 # ── Module-level APScheduler job functions ────────────────────────────────────
 # Must be at module scope (not closures) so APScheduler can pickle them for the
