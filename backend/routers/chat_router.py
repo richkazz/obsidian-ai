@@ -10,7 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from config import DATABASE_TYPE
 from database import get_db
-from models import Session as SessionModel, Message, Agent, LLMProvider, ToolDefinition, Team, MCPServer, FileAttachment, KnowledgeBase, HITLApproval, AgentMemory, TraceSpan, ToolProposal, Skill, AsyncJob
+from models import Session as SessionModel, Message, Agent, LLMProvider, ToolDefinition, Team, MCPServer, FileAttachment, KnowledgeBase, HITLApproval, AgentMemory, TraceSpan, ToolProposal, Skill, AsyncJob, AgentAPIConfig, SchemaVersion
 from schemas import ChatRequest, RateMessageRequest, HITLApprovalResponse, HITLPendingListResponse, ToolProposalResponse, ToolProposalPendingListResponse, AsyncJobResponse, AsyncJobPendingListResponse
 from auth import get_current_user, TokenData
 from encryption import decrypt_api_key
@@ -22,6 +22,7 @@ from rag_service import RAGService
 from sandbox_tools import SANDBOX_TOOL_SCHEMAS, execute_sandbox_tool, is_sandbox_tool
 from async_job_tools import SCHEDULE_ASYNC_CHECK_TOOL_SCHEMA, is_async_job_tool, execute_schedule_async_check
 from builtin_tools import BUILTIN_TOOL_SCHEMAS, execute_builtin_tool, is_builtin_tool
+from services.schema_validation_service import validate_json_schema
 
 if DATABASE_TYPE == "mongo":
     from database_mongo import get_database
@@ -2001,6 +2002,24 @@ async def _chat_sqlite(request: ChatRequest, current_user: TokenData, db: DBSess
     if not provider_record:
         raise HTTPException(status_code=404, detail="Provider not found")
 
+    response_schema = None
+    if request.structured:
+        api_config = db.query(AgentAPIConfig).filter(AgentAPIConfig.agent_id == agent.id).first()
+        if not api_config or api_config.publication_state not in {"published", "testing"}:
+            raise HTTPException(status_code=409, detail="Agent has no active API schema contract")
+        input_schema = db.get(SchemaVersion, api_config.input_schema_version_id)
+        output_schema = db.get(SchemaVersion, api_config.output_schema_version_id)
+        if not input_schema or not output_schema:
+            raise HTTPException(status_code=422, detail="Agent API schema contract is incomplete")
+        try:
+            structured_input = json.loads(request.message)
+            input_errors = validate_json_schema(json.loads(input_schema.canonical_schema_json), structured_input)
+        except (json.JSONDecodeError, TypeError):
+            input_errors = ["Input must be valid JSON"]
+        if input_errors:
+            raise HTTPException(status_code=422, detail={"code": "INPUT_SCHEMA_VALIDATION_FAILED", "details": input_errors})
+        response_schema = json.loads(output_schema.canonical_schema_json)
+
     _memory_enabled = getattr(agent, "memory_enabled", True)
 
     # Trigger memory reflection on most recent unprocessed prior session (background)
@@ -2061,13 +2080,13 @@ async def _chat_sqlite(request: ChatRequest, current_user: TokenData, db: DBSess
     if request.stream:
         if mcp_server_configs:
             return EventSourceResponse(
-                _stream_response_with_mcp(llm, messages, system_prompt, db, int(request.session_id), agent.id, provider_record, start_time, tools, mcp_server_configs, kb_meta=_kb_meta, agent=agent, edit_target=_edit_target, past_messages=past_messages),
+                _stream_response_with_mcp(llm, messages, system_prompt, db, int(request.session_id), agent.id, provider_record, start_time, tools, mcp_server_configs, kb_meta=_kb_meta, agent=agent, edit_target=_edit_target, past_messages=past_messages, response_schema=response_schema),
             )
         return EventSourceResponse(
-            _stream_response(llm, messages, system_prompt, db, int(request.session_id), agent.id, provider_record, start_time, tools, kb_meta=_kb_meta, agent=agent, edit_target=_edit_target, past_messages=past_messages),
+            _stream_response(llm, messages, system_prompt, db, int(request.session_id), agent.id, provider_record, start_time, tools, kb_meta=_kb_meta, agent=agent, edit_target=_edit_target, past_messages=past_messages, response_schema=response_schema),
         )
     else:
-        response = await llm.chat(messages, system_prompt=system_prompt, tools=tools)
+        response = await llm.chat(messages, system_prompt=system_prompt, tools=tools, response_schema=response_schema)
         latency_ms = int((time.time() - start_time) * 1000)
         metadata = json.dumps({"model": agent.model_id, "provider": provider_record.provider_type, "latency_ms": latency_ms})
         assistant_msg = Message(
@@ -2307,7 +2326,7 @@ def _parse_tool_proposal_args(tc) -> tuple[dict, str, str, str, dict, dict]:
     return args, name, description, handler_type, parameters, handler_config
 
 
-async def _stream_response(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, tools=None, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None):
+async def _stream_response(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, tools=None, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None, response_schema=None):
     """Generator yielding SSE events for streaming response, with tool execution loop."""
     full_content = ""
     reasoning_parts = []
@@ -2360,7 +2379,7 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
             _dynamic_schemas = _get_dynamic_tool_schemas_sqlite(session_id, db)
             _round_tools = list(tools) + _dynamic_schemas if tools else (_dynamic_schemas or None)
 
-            async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=_round_tools):
+            async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=_round_tools, response_schema=response_schema):
                 if chunk.type == "content":
                     prev_len = len(full_content)
                     full_content += chunk.content
@@ -2812,7 +2831,7 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
         }
 
 
-async def _stream_response_with_mcp(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, native_tools, mcp_server_configs, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None):
+async def _stream_response_with_mcp(llm, messages, system_prompt, db, session_id, agent_id, provider_record, start_time, native_tools, mcp_server_configs, kb_meta=None, agent=None, edit_target=None, past_messages=None, sandbox_container_id_override=None, response_schema=None):
     """Like _stream_response but connects to MCP servers for tool discovery and execution."""
     full_content = ""
     reasoning_parts = []
@@ -2860,7 +2879,7 @@ async def _stream_response_with_mcp(llm, messages, system_prompt, db, session_id
                 # Merge dynamically approved tools into tools list for this round
                 _dynamic_schemas_mcp = _get_dynamic_tool_schemas_sqlite(session_id, db)
                 _round_tools_mcp = list(tools) + _dynamic_schemas_mcp if tools else (_dynamic_schemas_mcp or None)
-                async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=_round_tools_mcp):
+                async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=_round_tools_mcp, response_schema=response_schema):
                     if chunk.type == "content":
                         prev_len = len(full_content)
                         full_content += chunk.content

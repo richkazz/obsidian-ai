@@ -150,6 +150,7 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
     db.add(Message(session_id=session.id, role="user", content=json.dumps(body.input))); db.commit()
 
     output = None
+    raw = ""
 
     try:
         raw = await run_agent_headless(session.id, agent_id, db, response_schema=output_schema_dict)

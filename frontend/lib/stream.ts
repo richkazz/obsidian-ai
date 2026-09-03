@@ -51,11 +51,13 @@ export async function streamChat(
   onToolProposalRequired?: (event: ToolProposalEvent) => void,
   onToolGenerating?: (event: { name: string; handler_type: string }) => void,
   onArtifact?: (event: ArtifactEvent) => void,
+  structured = false,
 ): Promise<void> {
   const body: Record<string, unknown> = {
     session_id: sessionId,
     message,
     stream: true,
+    structured,
   }
   if (attachments && attachments.length > 0) {
     body.attachments = attachments.map((a) => ({

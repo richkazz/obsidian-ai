@@ -187,6 +187,7 @@ async def _run_headless_sqlite(session_id: int, agent_id: int, db, response_sche
         _build_memory_injection,
         _SANDBOX_SYSTEM_HINT,
         _MEMORY_CAP,
+        _TraceContext,
     )
 
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
@@ -256,21 +257,39 @@ async def _run_headless_sqlite(session_id: int, agent_id: int, db, response_sche
             pass
 
     full_content = ""
+    trace = _TraceContext(session_id=session_id, db=db)
 
     for _round in range(MAX_TOOL_ROUNDS):
         tool_calls_collected = []
+        round_content = ""
+        round_usage = {}
+        round_started = asyncio.get_running_loop().time()
+        stop_reason = None
 
         async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=tools, response_schema=response_schema):
             if chunk.type == "content":
                 full_content += chunk.content
+                round_content += chunk.content
             elif chunk.type == "tool_call":
                 if chunk.tool_call:
                     tool_calls_collected.append(chunk.tool_call)
             elif chunk.type == "done":
+                round_usage = chunk.usage or {}
+                stop_reason = chunk.finish_reason
                 break
             elif chunk.type == "error":
                 logger.error("agent_runner LLM error: %s", chunk.error)
                 return _strip_artifacts(full_content) or None
+
+        trace.record_llm_span(
+            model_name=agent.model_id or provider_record.model_id or "unknown",
+            usage=round_usage,
+            duration_ms=int((asyncio.get_running_loop().time() - round_started) * 1000),
+            round_number=_round,
+            prompt_preview=(messages[-1].text_content if messages else ""),
+            response_preview=round_content,
+            stop_reason=stop_reason,
+        )
 
         if not tool_calls_collected:
             break
@@ -328,12 +347,21 @@ async def _run_headless_sqlite(session_id: int, agent_id: int, db, response_sche
                     continue
 
             _sandbox_cid = getattr(agent, "sandbox_container_id", None)
+            tool_started = asyncio.get_running_loop().time()
             if is_builtin_tool(tc.name):
                 result = await execute_builtin_tool(tc.name, tc.arguments)
             elif is_sandbox_tool(tc.name):
                 result = await execute_sandbox_tool(tc.name, tc.arguments, _sandbox_cid) if _sandbox_cid else json.dumps({"error": "Sandbox not running"})
             else:
                 result = _execute_tool(tc.name, tc.arguments, db)
+
+            trace.record_tool_span(
+                tc.name,
+                tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments),
+                result,
+                int((asyncio.get_running_loop().time() - tool_started) * 1000),
+                round_number=_round,
+            )
 
             messages.append(LLMMessage(
                 role="user",
@@ -440,7 +468,7 @@ async def _run_headless_mongo(
     system_prompt = (
         (agent.get("system_prompt") or "")
         + _build_memory_injection_dicts(_agent_memories)
-        + "\n\nIMPORTANT: You are responding via WhatsApp. Reply in plain text only. Do NOT use artifacts, XML tags, or markdown code blocks. Keep responses concise and conversational. If a tool returns an error, tell the user honestly what went wrong. Messages may include a [From: Name] prefix indicating the sender's WhatsApp display name — use it to address them personally when appropriate."
+        + ("\n\nReturn only valid JSON matching the supplied response schema. Do not wrap it in markdown or add commentary." if response_schema else "\n\nIMPORTANT: You are responding via WhatsApp. Reply in plain text only. Do NOT use artifacts, XML tags, or markdown code blocks. Keep responses concise and conversational. If a tool returns an error, tell the user honestly what went wrong. Messages may include a [From: Name] prefix indicating the sender's WhatsApp display name — use it to address them personally when appropriate.")
         + (_SANDBOX_SYSTEM_HINT if _sandbox_active else "")
     )
 
@@ -460,21 +488,51 @@ async def _run_headless_mongo(
             pass
 
     full_content = ""
+    trace_sequence = 0
+
+    async def record_mongo_span(data: dict):
+        nonlocal trace_sequence
+        data["sequence"] = trace_sequence
+        trace_sequence += 1
+        await _save_trace_span_mongo(mongo_db, data)
 
     for _round in range(MAX_TOOL_ROUNDS):
         tool_calls_collected = []
+        round_content = ""
+        round_usage = {}
+        round_started = asyncio.get_running_loop().time()
+        stop_reason = None
 
         async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=tools, response_schema=response_schema):
             if chunk.type == "content":
                 full_content += chunk.content
+                round_content += chunk.content
             elif chunk.type == "tool_call":
                 if chunk.tool_call:
                     tool_calls_collected.append(chunk.tool_call)
             elif chunk.type == "done":
+                round_usage = chunk.usage or {}
+                stop_reason = chunk.finish_reason
                 break
             elif chunk.type == "error":
                 logger.error("agent_runner mongo LLM error: %s", chunk.error)
                 return _strip_artifacts(full_content) or None
+
+        await record_mongo_span({
+            "session_id": session_id,
+            "span_type": "llm_call",
+            "name": agent.get("model_id") or provider_record.get("model_id") or "unknown",
+            "input_tokens": round_usage.get("input_tokens", 0),
+            "output_tokens": round_usage.get("output_tokens", 0),
+            "cache_read_tokens": round_usage.get("cache_read_input_tokens", 0) or 0,
+            "cache_creation_tokens": round_usage.get("cache_creation_input_tokens", 0) or 0,
+            "duration_ms": int((asyncio.get_running_loop().time() - round_started) * 1000),
+            "status": "success",
+            "stop_reason": stop_reason,
+            "input_data": json.dumps({"prompt_preview": (messages[-1].text_content if messages else "")[:5000]}),
+            "output_data": json.dumps({"response_preview": round_content[:5000]}),
+            "round_number": _round,
+        })
 
         if not tool_calls_collected:
             break
@@ -529,12 +587,24 @@ async def _run_headless_mongo(
                     continue
 
             _sandbox_cid = agent.get("sandbox_container_id")
+            tool_started = asyncio.get_running_loop().time()
             if is_builtin_tool(tc.name):
                 result = await execute_builtin_tool(tc.name, tc.arguments)
             elif is_sandbox_tool(tc.name):
                 result = await execute_sandbox_tool(tc.name, tc.arguments, _sandbox_cid) if _sandbox_cid else json.dumps({"error": "Sandbox not running"})
             else:
                 result = await _execute_tool_mongo(tc.name, tc.arguments, mongo_db, user_id=_user_id, session_id=session_id)
+
+            await record_mongo_span({
+                "session_id": session_id,
+                "span_type": "tool_call",
+                "name": tc.name,
+                "duration_ms": int((asyncio.get_running_loop().time() - tool_started) * 1000),
+                "status": "success",
+                "input_data": json.dumps({"arguments": tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments)})[:5000],
+                "output_data": json.dumps({"result": str(result)[:5000]}),
+                "round_number": _round,
+            })
 
             messages.append(LLMMessage(
                 role="user",

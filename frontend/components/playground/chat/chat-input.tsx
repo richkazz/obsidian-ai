@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { X, FileText, FileCode2, ChevronDown, Pencil, Plus } from "lucide-react"
+import { useState, useEffect, createElement } from "react"
+import type { ReactElement, ReactNode } from "react"
+import { X, FileText, FileCode2, ChevronDown, Pencil, Plus, Braces } from "lucide-react"
 import type { FileUIPart } from "ai"
 import {
   PromptInput,
@@ -17,11 +18,12 @@ import {
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input"
 import { usePlaygroundStore } from "@/stores/playground-store"
+import { apiClient } from "@/lib/api-client"
 import { cn } from "@/lib/utils"
 import type { Artifact } from "@/types/playground"
 
 interface ChatInputProps {
-  onSend: (message: string, files?: FileUIPart[]) => void
+  onSend: (message: string, files?: FileUIPart[], structured?: boolean) => void
   onStop: () => void
   isStreaming: boolean
   disabled?: boolean
@@ -78,7 +80,7 @@ function ArtifactTargetSelector({
   artifacts: Artifact[]
   target: Artifact | null
   onChange: (a: Artifact | null) => void
-}) {
+}): ReactElement | null {
   const [open, setOpen] = useState(false)
 
   if (artifacts.length === 0) return null
@@ -156,36 +158,55 @@ function ArtifactTargetSelector({
 
 export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputProps) {
   const status = isStreaming ? "streaming" as const : "ready" as const
-  const artifacts = usePlaygroundStore((s) => s.artifacts)
+  const artifacts = usePlaygroundStore((s): Artifact[] => s.artifacts)
+  const selectedAgentId = usePlaygroundStore((s) => s.selectedAgentId)
   const [targetArtifact, setTargetArtifact] = useState<Artifact | null>(null)
+  const [structured, setStructured] = useState(false)
+  const [schemas, setSchemas] = useState<{ input?: unknown; output?: unknown }>({})
+  const hasSchemas = Boolean(schemas.input || schemas.output)
+  const currentTargetArtifact = targetArtifact && artifacts.some((a) => a.id === targetArtifact.id)
+    ? targetArtifact
+    : null
+  const artifactSelector: ReactNode = artifacts.length > 0
+    ? createElement(ArtifactTargetSelector, { artifacts, target: currentTargetArtifact, onChange: setTargetArtifact }) as unknown as ReactNode
+    : null
 
-  // Clear selection if the targeted artifact was removed (e.g. agent/session switch)
   useEffect(() => {
-    if (targetArtifact && !artifacts.find((a) => a.id === targetArtifact.id)) {
-      setTargetArtifact(null)
-    }
-  }, [artifacts, targetArtifact])
+    if (!structured || !selectedAgentId) return
+    let active = true
+    Promise.all([apiClient.getAgentAPIConfig(selectedAgentId), apiClient.listSchemas()])
+      .then(([config, allSchemas]) => {
+        const input = allSchemas.find((schema: { latest_version?: { id?: unknown; canonical_schema?: unknown } }) => String(schema.latest_version?.id) === String(config.input_schema_version_id))
+        const output = allSchemas.find((schema: { latest_version?: { id?: unknown; canonical_schema?: unknown } }) => String(schema.latest_version?.id) === String(config.output_schema_version_id))
+        if (active) setSchemas({ input: input?.latest_version?.canonical_schema, output: output?.latest_version?.canonical_schema })
+      })
+      .catch(() => { if (active) setSchemas({}) })
+    return () => { active = false }
+  }, [structured, selectedAgentId])
 
   const handleSend = (text: string, files?: FileUIPart[]) => {
     let content = text
-    if (targetArtifact) {
+    if (currentTargetArtifact) {
       // Prepend a context block so the model knows exactly which artifact to update
-      content = `[EDIT ARTIFACT id="${targetArtifact.id}" title="${targetArtifact.title}" type="${targetArtifact.type}"]\n${text}`
+      content = `[EDIT ARTIFACT id="${currentTargetArtifact.id}" title="${currentTargetArtifact.title}" type="${currentTargetArtifact.type}"]\n${text}`
       // Keep targetArtifact selected so the user can keep editing without re-selecting
     }
-    onSend(content, files)
+    onSend(content, files, structured)
   }
 
   return (
     <div className="border-t border-border px-4 py-4">
       <div className="max-w-3xl mx-auto flex flex-col gap-1.5">
         {/* Artifact target selector — outside PromptInput so dropdown isn't clipped */}
-        {artifacts.length > 0 && (
-          <ArtifactTargetSelector
-            artifacts={artifacts}
-            target={targetArtifact}
-            onChange={setTargetArtifact}
-          />
+        {artifactSelector as never}
+        {structured && hasSchemas && (
+          <details className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+            <summary className="cursor-pointer font-medium text-primary">Active JSON contract</summary>
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <pre className="max-h-32 overflow-auto rounded bg-background/70 p-2">{String(JSON.stringify(schemas.input || {}, null, 2))}</pre>
+              <pre className="max-h-32 overflow-auto rounded bg-background/70 p-2">{String(JSON.stringify(schemas.output || {}, null, 2))}</pre>
+            </div>
+          </details>
         )}
         <PromptInput
           accept="image/*,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -200,7 +221,7 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputPr
         >
           <AttachmentPreview />
           <PromptInputTextarea
-            placeholder={disabled ? "Select an agent to start..." : "Ask anything..."}
+            placeholder={disabled ? "Select an agent to start..." : structured ? '{"query":"..."}' : "Ask anything..."}
             disabled={disabled}
           />
           <PromptInputFooter>
@@ -211,8 +232,21 @@ export function ChatInput({ onSend, onStop, isStreaming, disabled }: ChatInputPr
                   <PromptInputActionAddAttachments label="Attach files" />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
+              <button
+                type="button"
+                onClick={() => setStructured((value) => !value)}
+                disabled={disabled}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors",
+                  structured ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted",
+                )}
+                title="Test this agent's JSON input and output contract"
+              >
+                <Braces className="size-3.5" />
+                JSON test
+              </button>
               <span className="text-xs text-muted-foreground">
-                Shift + Enter for new line
+                {structured ? "Input and output follow the API schemas" : "Shift + Enter for new line"}
               </span>
             </PromptInputTools>
             <PromptInputSubmit

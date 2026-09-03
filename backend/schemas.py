@@ -400,6 +400,7 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
     stream: bool = True
+    structured: bool = False
     attachments: Optional[list[FileAttachmentInfo]] = None
 
 

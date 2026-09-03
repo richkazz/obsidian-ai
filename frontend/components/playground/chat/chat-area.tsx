@@ -106,7 +106,7 @@ export function ChatArea() {
       .catch(() => {})
   }, [selectedSessionId, authSession?.accessToken])
 
-  const sendMessage = async (content: string, files?: FileUIPart[]) => {
+  const sendMessage = async (content: string, files?: FileUIPart[], structured = false) => {
     if (!authSession?.accessToken || !entityId || isStreaming) return
 
     let sessionId = selectedSessionId
@@ -328,6 +328,7 @@ export function ChatArea() {
             setStreamingArtifact({ id: event.id, title: event.title, type: event.type, content: event.content })
           }
         },
+        structured,
       )
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
