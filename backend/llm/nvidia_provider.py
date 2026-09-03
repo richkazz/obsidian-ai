@@ -15,10 +15,9 @@ NVIDIA_API_KEY environment variable.
 import os
 import httpx
 from typing import Optional
+from agent_framework.openai import OpenAIChatClient
 
-from .openai_provider import OpenAIProvider
-
-NVIDIA_DEFAULT_BASE_URL = "https://integrate.api.nvidia.com"
+NVIDIA_DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_ENV_KEY = "NVIDIA_API_KEY"
 NVIDIA_DEFAULT_MODEL = "moonshotai/kimi-k3"
 
@@ -40,10 +39,8 @@ _KNOWN_CONTEXT_LENGTHS: dict[str, int] = {
 }
 
 
-class NvidiaProvider(OpenAIProvider):
-    """OpenAI-compatible provider for models served through build.nvidia.com."""
-
-    CONFIG_KEYS = OpenAIProvider.CONFIG_KEYS + ("chat_template_kwargs", "reasoning_budget")
+class NvidiaProvider(OpenAIChatClient):
+    """MAF-compatible OpenAI Chat Client for NVIDIA NIM models."""
 
     def __init__(
         self,
@@ -51,24 +48,33 @@ class NvidiaProvider(OpenAIProvider):
         base_url: Optional[str] = None,
         model_id: Optional[str] = None,
         config: Optional[dict] = None,
+        **kwargs,
     ):
-        api_key = api_key or os.environ.get(NVIDIA_ENV_KEY)
+        self.api_key = api_key or os.environ.get(NVIDIA_ENV_KEY)
+        self.base_url = base_url or NVIDIA_DEFAULT_BASE_URL
+        self.model_id = model_id or NVIDIA_DEFAULT_MODEL
+        self.config = config or {}
+
         super().__init__(
-            api_key=api_key,
-            base_url=base_url or NVIDIA_DEFAULT_BASE_URL,
-            model_id=model_id or NVIDIA_DEFAULT_MODEL,
-            config=config,
+            model=self.model_id,
+            api_key=self.api_key,
+            base_url=self.base_url,
+            **kwargs,
         )
 
+    def _headers(self) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
     async def list_models(self) -> list[dict]:
-        """NVIDIA serves its catalog at <base>/v1/models (not <base>/models
-        like OpenAIProvider's default), so this is overridden."""
+        """NVIDIA serves its catalog at <base>/v1/models or <base>/models."""
         try:
+            base = self.base_url.rstrip("/")
+            url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{self.base_url.rstrip('/')}/v1/models",
-                    headers=self._headers(),
-                )
+                response = await client.get(url, headers=self._headers())
                 response.raise_for_status()
                 data = response.json()
                 models = data.get("data", [])
@@ -79,9 +85,14 @@ class NvidiaProvider(OpenAIProvider):
         return list(POPULAR_MODELS)
 
     async def get_context_length(self) -> Optional[int]:
-        """NVIDIA doesn't expose a live context-length endpoint (unlike LM
-        Studio) — skip network calls and use the static table or None."""
         return _KNOWN_CONTEXT_LENGTHS.get(self.model_id)
+
+    async def test_connection(self) -> bool:
+        try:
+            models = await self.list_models()
+            return len(models) > 0
+        except Exception:
+            return False
 
 
 # Alias for backward compatibility

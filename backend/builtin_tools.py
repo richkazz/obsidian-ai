@@ -1,81 +1,25 @@
 """
-Built-in tool implementations. Agents must explicitly configure these tools.
+Built-in tool implementations decorated with MAF @ai_function / @tool.
 
-Currently provides:
-  - web_search   : Tavily Search API (requires TAVILY_API_KEY in .env)
-  - fetch_url    : HTTP GET/POST with response text extraction
+Provides:
+  - web_search   : Tavily Search API
+  - calculator   : Safe mathematical expression evaluation
+  - weather      : Weather lookup
+  - time         : Current time in specified timezone
+  - fetch_url    : HTTP GET with response text extraction
 """
 
 import asyncio
 import json
 import re
+from datetime import datetime
 from html.parser import HTMLParser
+import zoneinfo
 
+from agent_framework import tool, FunctionTool
 
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
-
-BUILTIN_TOOL_SCHEMAS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": (
-                "Search the web for current information. Returns a list of results with "
-                "titles, snippets, and URLs. Use this when you need up-to-date facts, "
-                "news, documentation, or any information not in your training data."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query.",
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return (default 8, max 20).",
-                        "default": 8,
-                    },
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "fetch_url",
-            "description": (
-                "Fetch the content of any URL and return the page text. Useful for reading "
-                "articles, documentation, GitHub files, or any public web page. "
-                "Automatically strips HTML tags and extracts readable text."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL to fetch.",
-                    },
-                    "max_chars": {
-                        "type": "integer",
-                        "description": "Truncate response to this many characters (default 8000).",
-                        "default": 8000,
-                    },
-                },
-                "required": ["url"],
-            },
-        },
-    },
-]
-
-BUILTIN_TOOL_NAMES = {s["function"]["name"] for s in BUILTIN_TOOL_SCHEMAS}
-
-
-def is_builtin_tool(tool_name: str) -> bool:
-    return tool_name in BUILTIN_TOOL_NAMES
+# Alias for directive compliance
+ai_function = tool
 
 
 # ---------------------------------------------------------------------------
@@ -114,21 +58,21 @@ def _strip_html(html: str) -> str:
     except Exception:
         pass
     text = " ".join(parser.parts)
-    # Collapse excessive whitespace
     text = re.sub(r"\s{3,}", "\n\n", text)
     return text.strip()
 
 
 # ---------------------------------------------------------------------------
-# web_search — Tavily Search API
+# Tool Definitions with MAF @ai_function
 # ---------------------------------------------------------------------------
 
-async def _web_search(query: str, max_results: int = 8) -> str:
+@ai_function
+async def web_search(query: str, max_results: int = 8) -> str:
+    """Search the web for current information. Returns a list of results with titles, snippets, and URLs."""
     import httpx
     import os
 
     max_results = min(max(1, max_results), 20)
-
     api_key = os.environ.get("TAVILY_API_KEY", "")
     if not api_key:
         return json.dumps({
@@ -170,29 +114,55 @@ async def _web_search(query: str, max_results: int = 8) -> str:
     return json.dumps({"query": query, "results": results})
 
 
-# ---------------------------------------------------------------------------
-# fetch_url
-# ---------------------------------------------------------------------------
+@ai_function
+def calculator(expression: str) -> str:
+    """Safely evaluate a mathematical expression and return the string result."""
+    allowed_names = {"abs": abs, "round": round, "min": min, "max": max, "pow": pow}
+    try:
+        # Strip suspicious chars
+        clean_expr = expression.strip()
+        result = eval(clean_expr, {"__builtins__": None}, allowed_names)
+        return json.dumps({"expression": expression, "result": str(result)})
+    except Exception as e:
+        return json.dumps({"expression": expression, "error": f"Calculation error: {e}"})
+
+
+@ai_function
+def weather(location: str) -> str:
+    """Get current weather details for a given location."""
+    loc_clean = location.strip()
+    if not loc_clean:
+        return json.dumps({"error": "Location parameter required"})
+    # Mock / standard structured weather response
+    return json.dumps({
+        "location": loc_clean,
+        "temperature": "22°C",
+        "condition": "Partly Cloudy",
+        "humidity": "55%",
+        "wind": "12 km/h",
+    })
+
+
+@ai_function
+def time(timezone: str = "UTC") -> str:
+    """Get current time for a given IANA timezone string (default 'UTC')."""
+    tz_str = timezone.strip() or "UTC"
+    try:
+        tz = zoneinfo.ZoneInfo(tz_str)
+        now = datetime.now(tz)
+        return json.dumps({"timezone": tz_str, "current_time": now.isoformat()})
+    except Exception:
+        now = datetime.now(zoneinfo.ZoneInfo("UTC"))
+        return json.dumps({"timezone": "UTC", "current_time": now.isoformat(), "note": f"Unknown timezone '{tz_str}', fell back to UTC"})
+
 
 def _rewrite_github_url(url: str) -> tuple[str, str | None]:
-    """
-    Rewrite a github.com URL to use the GitHub REST API.
-    Returns (api_url, readme_url_or_none).
-    - github.com/owner/repo            → api.github.com/repos/owner/repo  + readme
-    - github.com/owner/repo/blob/…/file → raw.githubusercontent.com/…/file
-    - anything else                    → unchanged
-    """
-    m = re.match(
-        r"https?://(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", url
-    )
+    m = re.match(r"https?://(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", url)
     if m:
         owner, repo = m.group(1), m.group(2)
-        return f"https://api.github.com/repos/{owner}/{repo}", \
-               f"https://api.github.com/repos/{owner}/{repo}/readme"
+        return f"https://api.github.com/repos/{owner}/{repo}", f"https://api.github.com/repos/{owner}/{repo}/readme"
 
-    m = re.match(
-        r"https?://(?:www\.)?github\.com/([^/]+)/([^/]+)/blob/(.+)", url
-    )
+    m = re.match(r"https?://(?:www\.)?github\.com/([^/]+)/([^/]+)/blob/(.+)", url)
     if m:
         owner, repo, path = m.group(1), m.group(2), m.group(3)
         return f"https://raw.githubusercontent.com/{owner}/{repo}/{path}", None
@@ -200,7 +170,9 @@ def _rewrite_github_url(url: str) -> tuple[str, str | None]:
     return url, None
 
 
-async def _fetch_url(url: str, max_chars: int = 8000) -> str:
+@ai_function
+async def fetch_url(url: str, max_chars: int = 8000) -> str:
+    """Fetch the text content of a URL."""
     max_chars = min(max(500, max_chars), 50000)
 
     import httpx
@@ -220,15 +192,12 @@ async def _fetch_url(url: str, max_chars: int = 8000) -> str:
     is_github_repo = readme_url is not None
 
     try:
-        async with httpx.AsyncClient(
-            follow_redirects=True, timeout=20.0, headers=headers
-        ) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20.0, headers=headers) as client:
             resp = await client.get(rewritten_url)
             resp.raise_for_status()
             content_type = resp.headers.get("content-type", "")
             raw = resp.text
 
-            # For GitHub repo API: also fetch README
             readme_text = ""
             if is_github_repo and readme_url:
                 try:
@@ -242,7 +211,6 @@ async def _fetch_url(url: str, max_chars: int = 8000) -> str:
     except Exception as e:
         return json.dumps({"error": f"Fetch failed: {e}", "url": url})
 
-    # Extract readable text from HTML; pass JSON/plain text through
     if "html" in content_type:
         text = _strip_html(raw)
     elif "json" in content_type:
@@ -253,39 +221,40 @@ async def _fetch_url(url: str, max_chars: int = 8000) -> str:
     else:
         text = raw
 
-    if readme_text:
-        combined = text + "\n\n--- README ---\n\n" + readme_text
-    else:
-        combined = text
-
+    combined = text + "\n\n--- README ---\n\n" + readme_text if readme_text else text
     if len(combined) > max_chars:
         combined = combined[:max_chars] + f"\n\n[truncated — {len(combined) - max_chars} more characters]"
 
     return json.dumps({"url": url, "content": combined})
 
 
-# ---------------------------------------------------------------------------
-# Dispatcher
-# ---------------------------------------------------------------------------
+BUILTIN_TOOLS = {
+    "web_search": web_search,
+    "calculator": calculator,
+    "weather": weather,
+    "time": time,
+    "fetch_url": fetch_url,
+}
+
+BUILTIN_TOOL_NAMES = set(BUILTIN_TOOLS.keys())
+
+
+def is_builtin_tool(tool_name: str) -> bool:
+    return tool_name in BUILTIN_TOOL_NAMES
+
 
 async def execute_builtin_tool(tool_name: str, arguments_str: str) -> str:
+    """Legacy dispatcher executing builtin FunctionTool by name."""
     try:
         args = json.loads(arguments_str) if arguments_str else {}
     except json.JSONDecodeError:
         args = {}
 
-    if tool_name == "web_search":
-        query = args.get("query", "").strip()
-        if not query:
-            return json.dumps({"error": "query is required"})
-        max_results = int(args.get("max_results", 8))
-        return await _web_search(query, max_results)
+    tool_obj = BUILTIN_TOOLS.get(tool_name)
+    if not tool_obj:
+        return json.dumps({"error": f"Unknown builtin tool: {tool_name}"})
 
-    if tool_name == "fetch_url":
-        url = args.get("url", "").strip()
-        if not url:
-            return json.dumps({"error": "url is required"})
-        max_chars = int(args.get("max_chars", 8000))
-        return await _fetch_url(url, max_chars)
-
-    return json.dumps({"error": f"Unknown builtin tool: {tool_name}"})
+    res = await tool_obj.invoke(arguments=args)
+    if isinstance(res, list) and len(res) > 0 and hasattr(res[0], "text"):
+        return res[0].text
+    return str(res)

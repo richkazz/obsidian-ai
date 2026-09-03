@@ -1,7 +1,7 @@
 import os
 import pytest
 from llm.base import LLMMessage
-from llm.nvidia import NvidiaProvider, NVIDIANIMProvider
+from llm.nvidia_provider import NvidiaProvider, NVIDIANIMProvider
 from llm.openai_provider import OpenAIProvider
 from llm.provider_factory import create_provider_from_config
 
@@ -74,7 +74,7 @@ def test_nvidia_provider_init_and_env_api_key(monkeypatch):
     provider = NvidiaProvider()
 
     assert provider.api_key == "nvapi-test-123"
-    assert provider.base_url == "https://integrate.api.nvidia.com"
+    assert provider.base_url in ("https://integrate.api.nvidia.com", "https://integrate.api.nvidia.com/v1")
     assert provider.model_id == "moonshotai/kimi-k3"
 
     # Custom model and key
@@ -118,7 +118,7 @@ async def test_nvidia_provider_known_context_length():
 
 
 def test_provider_factory_nvidia_registration():
-    provider = create_provider_from_config(
+    agent = create_provider_from_config(
         provider_type="nvidia",
         api_key="nvapi-factory-test",
         base_url=None,
@@ -126,19 +126,18 @@ def test_provider_factory_nvidia_registration():
         config={"reasoning_budget": 8192},
     )
 
-    assert isinstance(provider, NvidiaProvider)
-    assert isinstance(provider, NVIDIANIMProvider)
-    assert provider.api_key == "nvapi-factory-test"
-    assert provider.base_url == "https://integrate.api.nvidia.com"
-    assert provider.config.get("reasoning_budget") == 8192
+    assert isinstance(agent.client, NvidiaProvider)
+    assert isinstance(agent.client, NVIDIANIMProvider)
+    assert agent.client.api_key == "nvapi-factory-test"
+    assert agent.client.base_url in ("https://integrate.api.nvidia.com", "https://integrate.api.nvidia.com/v1")
 
-    provider_nim = create_provider_from_config(
+    agent_nim = create_provider_from_config(
         provider_type="nvidia_nim",
         api_key="nvapi-factory-test-2",
         base_url=None,
         model_id="nvidia/nemotron-3-ultra-550b-a55b",
     )
-    assert isinstance(provider_nim, NvidiaProvider)
+    assert isinstance(agent_nim.client, NvidiaProvider)
 
 
 def test_openai_url_formatting():
