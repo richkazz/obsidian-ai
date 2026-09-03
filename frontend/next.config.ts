@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
         source      : "/workflows/:path*",
         destination : `${backendUrl}/workflows/:path*`,
       },
+      // The external API keeps its /api/v1 prefix in the backend router.
+      {
+        source      : "/api/v1/:path*",
+        destination : `${backendUrl}/api/v1/:path*`,
+      },
       // Exclude file-based API routes that need proper streaming
       {
         source      : "/api/wa/channels/:id/qr",
