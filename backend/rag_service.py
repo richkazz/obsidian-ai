@@ -673,9 +673,34 @@ class VectorStoreContextProvider(ContextProvider if ContextProvider != object el
                 logger.warning("VectorStoreContextProvider session search fallback: %s", e)
 
         # KB RAG search
+        owner_id = str(getattr(agent, "user_id", None) or (agent.get("user_id") if isinstance(agent, dict) else ""))
         for kb_id in self.kb_ids:
             try:
-                res = await RAGService.search_kb_async(str(kb_id), query_text, top_k=self.top_k, api_key=self.api_key or "default_key")
+                kb_config = {}
+                if owner_id:
+                    if QDRANT_URL is None and os.getenv("DATABASE_TYPE") == "mongo":
+                        try:
+                            from database_mongo import get_database
+                            from models_mongo import KnowledgeBaseCollection
+                            _kb_obj = await KnowledgeBaseCollection.find_by_id(get_database(), str(kb_id))
+                            if _kb_obj:
+                                kb_config = {
+                                    "secret_id": _kb_obj.get("secret_id"),
+                                    "embedding_provider": _kb_obj.get("embedding_provider", "google"),
+                                    "embedding_model": _kb_obj.get("embedding_model", "text-embedding-004"),
+                                }
+                        except Exception:
+                            pass
+
+                from services.key_resolution_service import resolve_embedding_credentials
+                e_prov, e_key, e_model = await resolve_embedding_credentials(
+                    owner_id, kb_config
+                )
+
+                res = await RAGService.search_kb_async(
+                    str(kb_id), query_text, top_k=self.top_k,
+                    embedding_provider=e_prov, api_key=e_key, model=e_model
+                )
                 retrieved_results.extend(res)
             except Exception as e:
                 logger.warning("VectorStoreContextProvider KB search fallback for kb %s: %s", kb_id, e)

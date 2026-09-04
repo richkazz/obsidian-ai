@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+from typing import Any, Optional, Dict, List, Tuple, Union
 from contextlib import AsyncExitStack
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session as DBSession
@@ -1637,7 +1638,7 @@ async def _process_attachments_mongo(attachments, session_id: str, user_id: str,
     return image_parts, attachment_records
 
 
-def _build_user_llm_message(
+async def _build_user_llm_message(
     message_text: str,
     session_id: str,
     image_parts: list,
@@ -1645,6 +1646,8 @@ def _build_user_llm_message(
     kb_names: dict[str, str] | None = None,
     edit_target: tuple | None = None,
     past_messages=None,
+    owner_id: str | None = None,
+    db: Any = None,
 ) -> tuple["LLMMessage", dict]:
     """Build an LLMMessage for the user, including RAG context and image parts.
 
@@ -1692,7 +1695,38 @@ def _build_user_llm_message(
             if not RAGService.has_kb_index(kb_id):
                 kb_meta["unindexed_kbs"].append({"id": kb_id, "name": kb_name})
                 continue
-            results = RAGService.search_kb(kb_id, message_text, top_k=3)
+
+            kb_config = {}
+            if owner_id:
+                if DATABASE_TYPE == "mongo":
+                    from database_mongo import get_database
+                    from models_mongo import KnowledgeBaseCollection
+                    _kb_obj = await KnowledgeBaseCollection.find_by_id(get_database(), str(kb_id))
+                    if _kb_obj:
+                        kb_config = {
+                            "secret_id": _kb_obj.get("secret_id"),
+                            "embedding_provider": _kb_obj.get("embedding_provider", "google"),
+                            "embedding_model": _kb_obj.get("embedding_model", "text-embedding-004"),
+                        }
+                else:
+                    if db:
+                        _kb_obj = db.query(KnowledgeBase).filter(KnowledgeBase.id == (int(kb_id) if str(kb_id).isdigit() else kb_id)).first()
+                        if _kb_obj:
+                            kb_config = {
+                                "secret_id": _kb_obj.secret_id,
+                                "embedding_provider": _kb_obj.embedding_provider or "google",
+                                "embedding_model": _kb_obj.embedding_model or "text-embedding-004",
+                            }
+
+            from services.key_resolution_service import resolve_embedding_credentials
+            e_prov, e_key, e_model = await resolve_embedding_credentials(
+                owner_id or "", kb_config, db=db
+            )
+
+            results = await RAGService.query_kb_async(
+                kb_id, message_text, top_k=3,
+                embedding_provider=e_prov, api_key=e_key, model=e_model
+            )
             if results:
                 kb_meta["used_kbs"].append({"id": kb_id, "name": kb_name})
                 for r in results:
@@ -2148,10 +2182,11 @@ async def _chat_sqlite(request: ChatRequest, current_user: TokenData, db: DBSess
     _edit_target_early = _extract_edit_target(request.message)
 
     # Add user message to history (with images + RAG context)
-    _user_llm_msg, _kb_meta = _build_user_llm_message(
+    _user_llm_msg, _kb_meta = await _build_user_llm_message(
         request.message, str(request.session_id), image_parts,
         kb_ids=_agent_kb_ids, kb_names=_agent_kb_names,
         edit_target=_edit_target_early, past_messages=past_messages,
+        owner_id=str(user.id), db=db,
     )
     messages.append(_user_llm_msg)
 
@@ -3812,10 +3847,11 @@ async def _chat_mongo(request: ChatRequest, current_user: TokenData, start_time:
     _edit_target_mongo_early = _extract_edit_target(request.message)
 
     # Add user message to history (with images + RAG context)
-    _user_llm_msg_mongo, _kb_meta_mongo = _build_user_llm_message(
+    _user_llm_msg_mongo, _kb_meta_mongo = await _build_user_llm_message(
         request.message, request.session_id, image_parts,
         kb_ids=_agent_kb_ids_mongo, kb_names=_agent_kb_names_mongo,
         edit_target=_edit_target_mongo_early, past_messages=past_messages,
+        owner_id=str(user.get("id") or user.get("_id")), db=None,
     )
     messages.append(_user_llm_msg_mongo)
 

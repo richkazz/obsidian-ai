@@ -216,6 +216,12 @@ export interface KnowledgeBase {
   id: string
   name: string
   description?: string
+  app_id?: string
+  external_id?: string
+  scope_type?: "workspace" | "application"
+  embedding_provider?: string
+  embedding_model?: string
+  secret_id?: string
   is_shared: boolean
   is_active: boolean
   document_count: number
@@ -236,12 +242,24 @@ export interface KBDocument {
 export interface CreateKnowledgeBaseRequest {
   name: string
   description?: string
+  app_id?: string
+  external_id?: string
+  scope_type?: "workspace" | "application"
+  embedding_provider?: string
+  embedding_model?: string
+  secret_id?: string
   is_shared?: boolean
 }
 
 export interface UpdateKnowledgeBaseRequest {
   name?: string
   description?: string
+  app_id?: string
+  external_id?: string
+  scope_type?: "workspace" | "application"
+  embedding_provider?: string
+  embedding_model?: string
+  secret_id?: string
   is_shared?: boolean
 }
 
