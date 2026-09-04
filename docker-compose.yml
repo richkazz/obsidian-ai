@@ -18,12 +18,8 @@ services:
       - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       - PROVIDER_KEY_SECRET=${PROVIDER_KEY_SECRET:?Set PROVIDER_KEY_SECRET in the root .env file}
       - DATABASE_TYPE=${DATABASE_TYPE:-sqlite}
-      # SQLite and APScheduler state must live below /app/data, which is backed
-      # by the backend_data named volume declared below.
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/app.db}
       - SCHEDULER_DATABASE_URL=${SCHEDULER_DATABASE_URL:-sqlite:////app/data/agent_control_plane.db}
-      # These names match database_mongo.py. They are used only when
-      # DATABASE_TYPE=mongo; provide a persistent external MongoDB instance.
       - MONGO_URL=${MONGO_URL:-mongodb://mongo:27017/obsidian}
       - MONGO_DB_NAME=${MONGO_DB_NAME:-obsidian}
       - RATE_LIMIT_USER=${RATE_LIMIT_USER:-60}
@@ -71,20 +67,11 @@ services:
       - NODE_ENV=production
       - AUTH_SECRET=${AUTH_SECRET:?Set AUTH_SECRET in the root .env file}
       - AUTH_URL=${AUTH_URL:-http://localhost:3000}
-      # ENCRYPTION_KEY is deliberately injected at runtime. The root layout
-      # publishes it to browser code so CryptoJS can produce payloads that the
-      # backend decrypts with the same value.
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in the root .env file}
       - BACKEND_URL=http://backend:8001
     depends_on:
       backend:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     networks:
       - obsidian-network
 
@@ -109,8 +96,6 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      # NOTE: adjust this path if wa-bridge doesn't expose /health — swap for
-      # any lightweight route that returns 200 once the sidecar is ready.
       test: ["CMD-SHELL", "wget -qO- http://localhost:3200/health || exit 1"]
       interval: 15s
       timeout: 5s
