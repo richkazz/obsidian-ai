@@ -1243,6 +1243,26 @@ def _execute_python_tool(code_str: str, arguments: dict) -> str:
         return json.dumps({"error": str(e)})
 
 
+def _prepare_http_request(url_template: str, arguments: dict, method: str):
+    url = url_template
+    body_args = dict(arguments) if isinstance(arguments, dict) else {}
+    query_params = {}
+    if isinstance(arguments, dict):
+        for key, val in list(arguments.items()):
+            placeholder = f"{{{key}}}"
+            if placeholder in url:
+                url = url.replace(placeholder, str(val))
+                body_args.pop(key, None)
+
+    method_upper = (method or "POST").upper()
+    if method_upper in ("GET", "DELETE"):
+        query_params = body_args
+        json_body = None
+    else:
+        json_body = body_args if body_args else None
+    return url, method_upper, query_params, json_body
+
+
 def _execute_tool(tool_name: str, arguments_str: str, db) -> str:
     """Look up a tool by name and execute it, returning the result string."""
     try:
@@ -1268,17 +1288,21 @@ def _execute_tool(tool_name: str, arguments_str: str, db) -> str:
     elif tool_def.handler_type == "http":
         import httpx
         config = json.loads(tool_def.handler_config) if tool_def.handler_config else {}
-        url = config.get("url", "")
-        method = config.get("method", "POST").upper()
+        url_template = config.get("url", "")
+        method = config.get("method", "POST")
         headers = config.get("headers", {})
-        if not url:
+        if not url_template:
             return json.dumps({"error": "No URL configured for this tool"})
+        url, method_upper, query_params, json_body = _prepare_http_request(url_template, arguments, method)
         try:
             with httpx.Client(timeout=30.0) as client:
-                if method == "GET":
-                    resp = client.get(url, params=arguments, headers=headers)
-                else:
-                    resp = client.request(method, url, json=arguments, headers=headers)
+                resp = client.request(
+                    method_upper,
+                    url,
+                    params=query_params if query_params else None,
+                    json=json_body,
+                    headers=headers,
+                )
                 return resp.text
         except Exception as e:
             return json.dumps({"error": f"HTTP request failed: {e}"})
@@ -1319,17 +1343,21 @@ async def _execute_tool_mongo(tool_name: str, arguments_str: str, mongo_db) -> s
 
     elif handler_type == "http":
         import httpx
-        url = config.get("url", "")
-        method = config.get("method", "POST").upper()
+        url_template = config.get("url", "")
+        method = config.get("method", "POST")
         headers = config.get("headers", {})
-        if not url:
+        if not url_template:
             return json.dumps({"error": "No URL configured for this tool"})
+        url, method_upper, query_params, json_body = _prepare_http_request(url_template, arguments, method)
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                if method == "GET":
-                    resp = await client.get(url, params=arguments, headers=headers)
-                else:
-                    resp = await client.request(method, url, json=arguments, headers=headers)
+                resp = await client.request(
+                    method_upper,
+                    url,
+                    params=query_params if query_params else None,
+                    json=json_body,
+                    headers=headers,
+                )
                 return resp.text
         except Exception as e:
             return json.dumps({"error": f"HTTP request failed: {e}"})

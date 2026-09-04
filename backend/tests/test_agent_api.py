@@ -118,6 +118,44 @@ def test_get_agent_api_config(setup_data):
     assert res2.status_code == 200
     assert res2.json()["agent_id"] == str(agent_id)
 
+def test_get_unconfigured_agent_api_config(setup_data):
+    token = setup_data["user_token"]
+    db = next(get_db())
+    try:
+        new_agent = Agent(user_id=setup_data["user"].id, name="Unconfigured Agent", is_active=True)
+        db.add(new_agent)
+        db.commit()
+        db.refresh(new_agent)
+
+        res = client.get(f"/api/v1/agents/{new_agent.id}/api-config", headers={"Authorization": f"Bearer {token}"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["agent_id"] == str(new_agent.id)
+        assert data["publication_state"] == "draft"
+        assert data["rate_limit"] == 60
+        assert data["required_scopes"] == []
+    finally:
+        db.close()
+
+def test_prepare_http_request_interpolation():
+    from routers.chat_router import _prepare_http_request
+    url_tmpl = "https://api.example.com/users/{user_id}/orders/{order_id}"
+    args = {"user_id": "123", "order_id": "456", "status": "active"}
+
+    # GET method
+    url, method, query_params, json_body = _prepare_http_request(url_tmpl, args, "GET")
+    assert url == "https://api.example.com/users/123/orders/456"
+    assert method == "GET"
+    assert query_params == {"status": "active"}
+    assert json_body is None
+
+    # POST method
+    url_post, method_post, query_params_post, json_body_post = _prepare_http_request(url_tmpl, args, "POST")
+    assert url_post == "https://api.example.com/users/123/orders/456"
+    assert method_post == "POST"
+    assert query_params_post == {}
+    assert json_body_post == {"status": "active"}
+
 def test_auth_header_flexibility(setup_data):
     agent_id = setup_data["agent"].id
     key = setup_data["api_key"]
