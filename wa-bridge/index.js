@@ -370,36 +370,34 @@ async function startChannel(channelId, authPath) {
 
       _origStdoutWrite(`[WA-BRIDGE] text=${JSON.stringify(text)} msgKeys=${Object.keys(msg.message||{}).join(",")} waChatId=${waChatId}\n`);
 
-      // Transcribe voice notes via backend
+      // Transcribe voice notes via backend (Disabled / commented out to keep backend lighter)
       if (!text && msg.message?.audioMessage) {
-        // Mark seen immediately so a duplicate arrival on the other JID doesn't also transcribe
         seenMsgIds.add(msgId);
         if (seenMsgIds.size > 500) { const first = seenMsgIds.values().next().value; seenMsgIds.delete(first); }
-        try {
-          const audioBuffer = await downloadMediaMessage(msg, "buffer", {});
-          // POST multipart to backend /wa/transcribe
-          const boundary = `----WA${Date.now()}`;
-          const crlf = "\r\n";
-          const bodyParts = [
-            `--${boundary}${crlf}`,
-            `Content-Disposition: form-data; name="file"; filename="audio.ogg"${crlf}`,
-            `Content-Type: audio/ogg${crlf}${crlf}`,
-          ];
-          const tail = `${crlf}--${boundary}--${crlf}`;
-          const head = Buffer.from(bodyParts.join(""));
-          const tailBuf = Buffer.from(tail);
-          const body = Buffer.concat([head, audioBuffer, tailBuf]);
-
-          const resp = await axios.post(
-            `${FASTAPI_URL}/wa/transcribe`,
-            body,
-            { headers: { "Content-Type": `multipart/form-data; boundary=${boundary}`, ...SIDECAR_HEADERS }, responseType: "json", timeout: 120000 }
-          );
-          text = resp.data?.text || null;
-          _origStdoutWrite(`[WA-BRIDGE] transcribed audio: ${JSON.stringify(text)}\n`);
-        } catch (err) {
-          _origStdoutWrite(`[WA-BRIDGE] audio transcription failed: ${err.message}\n`);
-        }
+        text = "[Voice Note Received: Audio transcription is currently disabled on backend. Please send a text message instead.]";
+        // try {
+        //   const audioBuffer = await downloadMediaMessage(msg, "buffer", {});
+        //   const boundary = `----WA${Date.now()}`;
+        //   const crlf = "\r\n";
+        //   const bodyParts = [
+        //     `--${boundary}${crlf}`,
+        //     `Content-Disposition: form-data; name="file"; filename="audio.ogg"${crlf}`,
+        //     `Content-Type: audio/ogg${crlf}${crlf}`,
+        //   ];
+        //   const tail = `${crlf}--${boundary}--${crlf}`;
+        //   const head = Buffer.from(bodyParts.join(""));
+        //   const tailBuf = Buffer.from(tail);
+        //   const body = Buffer.concat([head, audioBuffer, tailBuf]);
+        //
+        //   const resp = await axios.post(
+        //     `${FASTAPI_URL}/wa/transcribe`,
+        //     body,
+        //     { headers: { "Content-Type": `multipart/form-data; boundary=${boundary}`, ...SIDECAR_HEADERS }, responseType: "json", timeout: 120000 }
+        //   );
+        //   text = resp.data?.text || null;
+        // } catch (err) {
+        //   _origStdoutWrite(`[WA-BRIDGE] audio transcription failed: ${err.message}\n`);
+        // }
       }
 
       // Don't add to seenMsgIds if no text — messages.update may deliver the decrypted content later
@@ -624,40 +622,36 @@ app.post("/channels/:id/send-quoted", async (req, res) => {
   }
 });
 
-/** Send an outgoing voice note (OGG Opus) */
+/** Send an outgoing voice note (OGG Opus) - Disabled / Commented out */
 app.post("/channels/:id/send-audio", async (req, res) => {
-  const { id } = req.params;
-  const waChatId = req.headers["x-wa-chat-id"];
-
-  if (!waChatId) return res.status(400).json({ error: "Missing X-WA-Chat-Id header" });
-
-  const entry = channels.get(id);
-  if (!entry || entry.status !== "connected") {
-    return res.status(503).json({ error: "Channel not connected" });
-  }
-
-  try {
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    const audioBuffer = Buffer.concat(chunks);
-
-    const sent = await entry.socket.sendMessage(waChatId, {
-      audio: audioBuffer,
-      mimetype: "audio/ogg; codecs=opus",
-      ptt: true,  // ptt=true displays as a voice note in WhatsApp
-    });
-
-    if (sent?.key?.id) {
-      entry.recentSent.set(sent.key.id, sent.message);
-      if (entry.recentSent.size > 50) {
-        entry.recentSent.delete(entry.recentSent.keys().next().value);
-      }
-    }
-    res.json({ status: "sent" });
-  } catch (err) {
-    logger.error({ err }, "Failed to send audio message");
-    res.status(500).json({ error: String(err) });
-  }
+  return res.status(501).json({ error: "Audio sending is currently disabled." });
+  // const { id } = req.params;
+  // const waChatId = req.headers["x-wa-chat-id"];
+  // if (!waChatId) return res.status(400).json({ error: "Missing X-WA-Chat-Id header" });
+  // const entry = channels.get(id);
+  // if (!entry || entry.status !== "connected") {
+  //   return res.status(503).json({ error: "Channel not connected" });
+  // }
+  // try {
+  //   const chunks = [];
+  //   for await (const chunk of req) chunks.push(chunk);
+  //   const audioBuffer = Buffer.concat(chunks);
+  //   const sent = await entry.socket.sendMessage(waChatId, {
+  //     audio: audioBuffer,
+  //     mimetype: "audio/ogg; codecs=opus",
+  //     ptt: true,
+  //   });
+  //   if (sent?.key?.id) {
+  //     entry.recentSent.set(sent.key.id, sent.message);
+  //     if (entry.recentSent.size > 50) {
+  //       entry.recentSent.delete(entry.recentSent.keys().next().value);
+  //     }
+  //   }
+  //   res.json({ status: "sent" });
+  // } catch (err) {
+  //   logger.error({ err }, "Failed to send audio message");
+  //   res.status(500).json({ error: String(err) });
+  // }
 });
 
 /** SSE stream of QR / status events for a channel */

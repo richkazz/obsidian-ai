@@ -148,7 +148,7 @@ def test_handoff_and_magentic_orchestration_builders():
 
 @pytest.mark.asyncio
 async def test_headless_channel_whatsapp_execution_flow(db_session):
-    """Simulate WhatsApp incoming message, headless agent turn, artifact stripping, and TTS synthesis."""
+    """Simulate WhatsApp incoming message, headless agent turn, and artifact stripping."""
     user = User(username="wa_user", email="wa@example.com", role="user", hashed_password="pw")
     db_session.add(user)
     db_session.commit()
@@ -197,13 +197,6 @@ async def test_headless_channel_whatsapp_execution_flow(db_session):
         assert reply is not None
         assert "<artifact" not in reply
         assert "How can I help you today?" in reply
-
-    # Test TTS synthesis with stripped reply text
-    with patch("services.tts_service.synthesize", new_callable=AsyncMock) as mock_synth:
-        mock_synth.return_value = b"OGG_AUDIO_BYTES"
-        from services.tts_service import synthesize
-        ogg = await synthesize(reply, voice="Ryan")
-        assert ogg == b"OGG_AUDIO_BYTES"
 
 
 # ── 4. Eval Harness & Trace Pipeline Test ───────────────────────────────────

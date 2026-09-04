@@ -468,42 +468,9 @@ async def update_channel_status(
     return {"ok": True}
 
 
-VOICE_SAMPLES_DIR = os.environ.get("VOICE_SAMPLES_DIR", "voice_samples")
+# VOICE_SAMPLES_DIR = os.environ.get("VOICE_SAMPLES_DIR", "voice_samples")
 
-# Re-use the same ffmpeg resolver as tts_service
-def _find_ffmpeg_bin() -> str:
-    import shutil, glob
-    found = shutil.which("ffmpeg")
-    if found:
-        return found
-    candidates = [
-        r"C:\ffmpeg\bin\ffmpeg.exe",
-        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-        r"C:\ProgramData\chocolatey\bin\ffmpeg.exe",
-    ]
-    winget_base = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages")
-    if os.path.isdir(winget_base):
-        candidates = glob.glob(os.path.join(winget_base, "**", "ffmpeg.exe"), recursive=True) + candidates
-    for c in candidates:
-        if os.path.isfile(c):
-            return c
-    return "ffmpeg"
-
-_FFMPEG = _find_ffmpeg_bin()
-
-
-def _convert_to_wav(audio_bytes: bytes, src_format: str = "webm") -> bytes:
-    """Convert any audio format to 16kHz mono WAV using ffmpeg."""
-    # Always let ffmpeg auto-detect format from the stream — forcing -f causes
-    # failures when the format hint is wrong (e.g. browser records webm but
-    # file upload is MP3/WAV/etc.)
-    cmd = [_FFMPEG, "-y", "-i", "pipe:0", "-ar", "16000", "-ac", "1", "-f", "wav", "pipe:1"]
-    proc = subprocess.run(cmd, input=audio_bytes, capture_output=True, timeout=30)
-    if proc.returncode != 0:
-        err = proc.stderr.decode(errors="replace")
-        raise RuntimeError(f"ffmpeg conversion failed: {err[-1000:]}")
-    return proc.stdout
-
+# Audio processing & voice sample handlers disabled to keep backend lighter for now.
 
 @router.get("/channels/{channel_id}/voice-script")
 async def get_voice_script(
@@ -511,75 +478,7 @@ async def get_voice_script(
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Generate a ~1 min reading script in the agent's voice for voice cloning."""
-    from llm.provider_factory import create_provider, create_provider_from_config
-    from llm.base import LLMMessage
-
-    try:
-        if DATABASE_TYPE == "mongo":
-            from models_mongo import LLMProviderCollection
-            mongo_db = get_database()
-            ch = await WhatsAppChannelCollection.find_by_id(mongo_db, str(channel_id))
-            if not ch or str(ch.get("user_id")) != str(current_user.user_id):
-                raise HTTPException(404, "Channel not found")
-            agent_id = ch.get("agent_id")
-            agent = await AgentCollection.find_by_id(mongo_db, str(agent_id)) if agent_id else None
-            system_prompt = agent.get("system_prompt", "") if agent else ""
-            provider_id = str(agent.get("provider_id", "")) if agent else None
-            provider_record = await LLMProviderCollection.find_by_id(mongo_db, provider_id) if provider_id else None
-        else:
-            from models import LLMProvider
-            ch = db.query(WhatsAppChannel).filter(
-                WhatsAppChannel.id == int(channel_id),
-                WhatsAppChannel.user_id == current_user.user_id,
-                WhatsAppChannel.is_active == True,
-            ).first()
-            if not ch:
-                raise HTTPException(404, "Channel not found")
-            agent = db.query(Agent).filter(Agent.id == ch.agent_id).first() if ch.agent_id else None
-            system_prompt = agent.system_prompt or "" if agent else ""
-            provider_record = db.query(LLMProvider).filter(LLMProvider.id == agent.provider_id).first() if agent else None
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"Failed to load channel/agent: {e}")
-
-    if not provider_record:
-        # Fallback script if no provider configured
-        return {"script": "Hi, I'm recording a short voice sample. The quick brown fox jumps over the lazy dog. I believe every conversation is an opportunity to connect, learn, and grow. Clear communication is at the heart of everything I do. Whether answering questions, solving problems, or sharing ideas, I aim to be helpful, accurate, and easy to understand. Today is a great day to learn something new, and I'm here to help every step of the way. Thank you for taking the time to listen."}
-
-    try:
-        from encryption import decrypt_api_key
-        if DATABASE_TYPE == "mongo":
-            api_key = decrypt_api_key(provider_record.get("api_key")) if provider_record.get("api_key") else None
-            config = json.loads(provider_record["config_json"]) if provider_record.get("config_json") else None
-            provider = create_provider_from_config(
-                provider_type=str(provider_record["provider_type"]),
-                api_key=api_key,
-                base_url=str(provider_record["base_url"]) if provider_record.get("base_url") else None,
-                model_id=str(agent.get("model_id") or provider_record.get("model_id") or "claude-sonnet-4-6"),
-                config=config,
-            )
-        else:
-            provider = create_provider(provider_record)
-        prompt = (
-            "You are generating a voice cloning reference script. "
-            "Based on the agent persona below, write a natural-sounding monologue of exactly 140-160 words "
-            "that this agent might realistically say. "
-            "The script should use vocabulary, tone, and sentence structure consistent with the agent's persona. "
-            "It should flow naturally when read aloud and take approximately 60 seconds to read. "
-            "Output ONLY the script text with no labels, quotes, or explanation.\n\n"
-            f"Agent persona:\n{system_prompt[:2000] if system_prompt else 'A helpful AI assistant.'}"
-        )
-        response = await provider.chat(
-            messages=[LLMMessage(role="user", content=prompt)],
-        )
-        script = response.text_content.strip().strip('"').strip("'")
-        if script:
-            return {"script": script}
-    except Exception as e:
-        raise HTTPException(500, f"LLM error: {e}")
-    return {"script": "Hi, I'm recording a short voice sample. The quick brown fox jumps over the lazy dog. I believe every conversation is an opportunity to connect, learn, and grow. Clear communication is at the heart of everything I do. Whether answering questions, solving problems, or sharing ideas, I aim to be helpful, accurate, and easy to understand. Today is a great day to learn something new, and I'm here to help every step of the way. Thank you for taking the time to listen."}
+    raise HTTPException(501, "Voice script generation is currently disabled.")
 
 
 @router.post("/channels/{channel_id}/voice-sample")
@@ -590,78 +489,7 @@ async def upload_voice_sample(
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Upload a voice reference clip for voice cloning.
-    Accepts any audio format (webm, ogg, mp4, wav, …).
-    Converts to 16kHz mono WAV and stores it.
-    Optionally saves the transcript (ref_text) to the channel.
-    """
-    # Verify channel ownership
-    if DATABASE_TYPE == "mongo":
-        mongo_db = get_database()
-        ch = await WhatsAppChannelCollection.find_by_id(mongo_db, str(channel_id))
-        if not ch or ch.get("user_id") != str(current_user.user_id):
-            raise HTTPException(404, "Channel not found")
-    else:
-        ch = db.query(WhatsAppChannel).filter(
-            WhatsAppChannel.id == int(channel_id),
-            WhatsAppChannel.user_id == current_user.user_id,
-            WhatsAppChannel.is_active == True,
-        ).first()
-        if not ch:
-            raise HTTPException(404, "Channel not found")
-
-    audio_bytes = await file.read()
-    await file.close()
-
-    # Detect format from content-type or filename
-    content_type = (file.content_type or "").lower()
-    filename = (file.filename or "").lower()
-    if "webm" in content_type or filename.endswith(".webm"):
-        src_fmt = "webm"
-    elif "ogg" in content_type or filename.endswith(".ogg"):
-        src_fmt = "ogg"
-    elif "mp4" in content_type or filename.endswith(".mp4") or filename.endswith(".m4a"):
-        src_fmt = "mp4"
-    elif "wav" in content_type or filename.endswith(".wav"):
-        src_fmt = "wav"
-    else:
-        src_fmt = "webm"  # safe default for browser recordings
-
-    try:
-        wav_bytes = _convert_to_wav(audio_bytes, src_fmt)
-    except Exception as e:
-        raise HTTPException(400, f"Audio conversion failed: {e}")
-
-    # Store the WAV file
-    os.makedirs(VOICE_SAMPLES_DIR, exist_ok=True)
-    save_path = os.path.join(VOICE_SAMPLES_DIR, f"channel_{channel_id}.wav")
-    with open(save_path, "wb") as f:
-        f.write(wav_bytes)
-
-    # Invalidate any cached clone prompts for this channel
-    from services.tts_service import invalidate_voice_clone_cache
-    invalidate_voice_clone_cache(save_path)
-
-    # Persist path (and optional ref_text) to DB
-    if DATABASE_TYPE == "mongo":
-        updates: dict = {"voice_clone_audio_path": save_path}
-        if ref_text is not None:
-            updates["voice_clone_ref_text"] = ref_text or None
-        await WhatsAppChannelCollection.update(mongo_db, str(channel_id), str(current_user.user_id), updates)
-    else:
-        ch.voice_clone_audio_path = save_path
-        if ref_text is not None:
-            ch.voice_clone_ref_text = ref_text or None
-        db.commit()
-        db.refresh(ch)
-
-    return {
-        "ok": True,
-        "audio_path": save_path,
-        "ref_text": ref_text,
-        "size_bytes": len(wav_bytes),
-    }
+    raise HTTPException(501, "Voice sample uploading is currently disabled.")
 
 
 @router.delete("/channels/{channel_id}/voice-sample")
@@ -670,66 +498,16 @@ async def delete_voice_sample(
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Remove the stored voice clone sample for a channel."""
-    if DATABASE_TYPE == "mongo":
-        mongo_db = get_database()
-        ch = await WhatsAppChannelCollection.find_by_id(mongo_db, str(channel_id))
-        if not ch or ch.get("user_id") != str(current_user.user_id):
-            raise HTTPException(404, "Channel not found")
-        audio_path = ch.get("voice_clone_audio_path")
-        updates = {"voice_clone_audio_path": None, "voice_clone_ref_text": None}
-        await WhatsAppChannelCollection.update(mongo_db, str(channel_id), str(current_user.user_id), updates)
-    else:
-        ch = db.query(WhatsAppChannel).filter(
-            WhatsAppChannel.id == int(channel_id),
-            WhatsAppChannel.user_id == current_user.user_id,
-            WhatsAppChannel.is_active == True,
-        ).first()
-        if not ch:
-            raise HTTPException(404, "Channel not found")
-        audio_path = getattr(ch, "voice_clone_audio_path", None)
-        ch.voice_clone_audio_path = None
-        ch.voice_clone_ref_text = None
-        db.commit()
-
-    # Delete file and invalidate cache
-    if audio_path and os.path.isfile(audio_path):
-        try:
-            os.remove(audio_path)
-        except Exception:
-            pass
-        from services.tts_service import invalidate_voice_clone_cache
-        invalidate_voice_clone_cache(audio_path)
-
-    return {"ok": True}
+    raise HTTPException(501, "Voice sample management is currently disabled.")
 
 
 @router.post("/transcribe")
 async def transcribe_audio(request: Request):
     """
     Called by the Baileys sidecar to transcribe a WhatsApp voice note.
-    Receives multipart/form-data with field 'file', returns {"text": "..."}.
-    No user auth — sidecar is localhost-only.
-    All processing is routed via Groq Whisper API (stt_service).
-    Degrades gracefully with a friendly user prompt on timeout or corrupted audio.
+    Returns fallback prompt indicating voice notes are currently disabled.
     """
-    form = await request.form()
-    upload = form.get("file")
-    if not upload:
-        raise HTTPException(400, "No file field in form data")
-
-    audio_bytes = await upload.read()
-    filename = getattr(upload, "filename", "voice.ogg") or "voice.ogg"
-    await upload.close()
-
-    try:
-        from services.stt_service import transcribe_audio as groq_transcribe
-        text = await groq_transcribe(audio_bytes, filename=filename)
-        if not text:
-            return {"text": "[Voice Note Error: Unable to transcribe audio. Please send a text message instead.]"}
-        return {"text": text}
-    except Exception as e:
-        return {"text": "[Voice Note Error: Unable to transcribe audio. Please send a text message instead.]"}
+    return {"text": "[Voice Note Error: Audio processing is currently disabled on backend. Please send a text message instead.]"}
 
 
 @router.post("/incoming")

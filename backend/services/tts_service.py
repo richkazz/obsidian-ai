@@ -131,12 +131,13 @@ async def synthesize(
 ) -> bytes:
     """
     Synthesize text into OGG Opus bytes using Google Cloud Text-to-Speech.
+    Currently disabled / commented out to keep backend lighter.
     """
-    clean_text = _clean_for_tts(text)
-    if not clean_text:
-        raise ValueError("Text is empty after cleaning for TTS")
-
-    return await _synthesize_google_tts(clean_text, voice_name=voice)
+    raise NotImplementedError("TTS synthesis is currently disabled.")
+    # clean_text = _clean_for_tts(text)
+    # if not clean_text:
+    #     raise ValueError("Text is empty after cleaning for TTS")
+    # return await _synthesize_google_tts(clean_text, voice_name=voice)
 
 
 def invalidate_voice_clone_cache(ref_audio: str) -> None:
