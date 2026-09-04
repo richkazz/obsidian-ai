@@ -23,6 +23,7 @@ import { BookOpen, Plus, Trash2, FileText, Globe, Loader2, AlertTriangle, Code, 
 import { toast } from "sonner"
 import { useConfirm } from "@/hooks/use-confirm"
 import { usePermissionsStore } from "@/stores/permissions-store"
+import { AnimatedList, AnimatedListItem } from "@/components/ui/animated-list"
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
@@ -221,95 +222,96 @@ export default function KnowledgePage() {
             )}
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <AnimatedList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredKnowledgeBases.map((kb) => {
               const isMissingSecret = kb.secret_id && !secretIdsSet.has(String(kb.secret_id))
 
               return (
-                <Card
-                  key={kb.id}
-                  className="cursor-pointer hover:bg-muted/30 transition-colors flex flex-col justify-between"
-                  onClick={() => router.push(`/knowledge/${kb.id}`)}
-                >
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base font-semibold leading-snug">{kb.name}</CardTitle>
-                      <div className="flex flex-wrap items-center gap-1 shrink-0">
-                        {kb.is_shared && (
-                          <Badge variant="secondary" className="text-xs gap-1">
-                            <Globe className="h-3 w-3" />
-                            Shared
-                          </Badge>
-                        )}
-                        {kb.app_id && (
-                          <Badge variant="outline" className="text-xs gap-1 border-primary/30 text-primary bg-primary/5">
-                            <Layers className="h-3 w-3" />
-                            App: {kb.app_id}
-                          </Badge>
-                        )}
-                        {kb.external_id && (
-                          <Badge variant="outline" className="text-xs bg-muted/50">
-                            Ext ID: {kb.external_id}
-                          </Badge>
-                        )}
-                        {isMissingSecret && (
-                          <Badge variant="destructive" className="text-xs gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            Credentials Missing
-                          </Badge>
-                        )}
+                <AnimatedListItem key={kb.id}>
+                  <Card
+                    className="cursor-pointer hover:bg-muted/30 transition-colors flex flex-col justify-between h-full"
+                    onClick={() => router.push(`/knowledge/${kb.id}`)}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <CardTitle className="text-base font-semibold leading-snug">{kb.name}</CardTitle>
+                        <div className="flex flex-wrap items-center gap-1 shrink-0">
+                          {kb.is_shared && (
+                            <Badge variant="secondary" className="text-xs gap-1">
+                              <Globe className="h-3 w-3" />
+                              Shared
+                            </Badge>
+                          )}
+                          {kb.app_id && (
+                            <Badge variant="outline" className="text-xs gap-1 border-primary/30 text-primary bg-primary/5">
+                              <Layers className="h-3 w-3" />
+                              App: {kb.app_id}
+                            </Badge>
+                          )}
+                          {kb.external_id && (
+                            <Badge variant="outline" className="text-xs bg-muted/50">
+                              Ext ID: {kb.external_id}
+                            </Badge>
+                          )}
+                          {isMissingSecret && (
+                            <Badge variant="destructive" className="text-xs gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              Credentials Missing
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </CardHeader>
+                    </CardHeader>
 
-                  <CardContent className="pt-0">
-                    {kb.description && (
-                      <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{kb.description}</p>
-                    )}
+                    <CardContent className="pt-0">
+                      {kb.description && (
+                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{kb.description}</p>
+                      )}
 
-                    <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <FileText className="h-3.5 w-3.5" />
-                        <span>{kb.document_count} document{kb.document_count !== 1 ? "s" : ""}</span>
-                      </div>
+                      <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <FileText className="h-3.5 w-3.5" />
+                          <span>{kb.document_count} document{kb.document_count !== 1 ? "s" : ""}</span>
+                        </div>
 
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
-                          title="Application Integration Snippets"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setSelectedKBForCode(kb)
-                            setShowCodeDrawer(true)
-                          }}
-                        >
-                          <Code className="h-3.5 w-3.5" />
-                        </Button>
-
-                        <span className="text-xs text-muted-foreground ml-1">{formatDate(kb.created_at)}</span>
-
-                        {canCreateKB && (
+                        <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive cursor-pointer"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                            title="Application Integration Snippets"
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleDelete(kb)
+                              setSelectedKBForCode(kb)
+                              setShowCodeDrawer(true)
                             }}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Code className="h-3.5 w-3.5" />
                           </Button>
-                        )}
+
+                          <span className="text-xs text-muted-foreground ml-1">{formatDate(kb.created_at)}</span>
+
+                          {canCreateKB && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDelete(kb)
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </AnimatedListItem>
               )
             })}
-          </div>
+          </AnimatedList>
         )}
       </div>
 

@@ -119,8 +119,11 @@ class GoogleEmbeddingClient(BaseEmbeddingClient):
         self.model = model or "text-embedding-004"
 
     async def embed(self, text: str) -> List[float]:
-        if not self.api_key:
-            raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+        if not self.api_key or self.api_key == "dummy_embedding_key":
+            raise HTTPException(
+                status_code=400,
+                detail="Embedding provider credentials invalid or missing: No valid API key configured or resolved for Google Gemini embedding provider."
+            )
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:embedContent?key={self.api_key}"
         payload = {
             "model": f"models/{self.model}",
@@ -131,17 +134,26 @@ class GoogleEmbeddingClient(BaseEmbeddingClient):
                 response = await client.post(url, json=payload)
             if response.status_code != 200:
                 logger.warning("Google Embedding error %d: %s", response.status_code, response.text)
-                raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Embedding provider credentials invalid or missing: Google API error ({response.status_code}) - {response.text}"
+                )
             data = response.json()
             vals = data.get("embedding", {}).get("values")
             if not vals:
-                raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Embedding provider credentials invalid or missing: Response from Google API did not contain embedding values - {response.text}"
+                )
             return vals
         except HTTPException:
             raise
         except Exception as e:
             logger.warning("Google Embedding request failed: %s", e)
-            raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Embedding provider credentials invalid or missing: Request failed ({type(e).__name__}): {e}"
+            )
 
 
 class OpenAIEmbeddingClient(BaseEmbeddingClient):
@@ -150,8 +162,11 @@ class OpenAIEmbeddingClient(BaseEmbeddingClient):
         self.model = model or "text-embedding-3-small"
 
     async def embed(self, text: str) -> List[float]:
-        if not self.api_key:
-            raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+        if not self.api_key or self.api_key == "dummy_embedding_key":
+            raise HTTPException(
+                status_code=400,
+                detail="Embedding provider credentials invalid or missing: No valid API key configured or resolved for OpenAI embedding provider."
+            )
         url = "https://api.openai.com/v1/embeddings"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         payload = {"input": text, "model": self.model}
@@ -159,13 +174,19 @@ class OpenAIEmbeddingClient(BaseEmbeddingClient):
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.post(url, json=payload, headers=headers)
             if response.status_code != 200:
-                raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Embedding provider credentials invalid or missing: OpenAI API error ({response.status_code}) - {response.text}"
+                )
             data = response.json()
             return data["data"][0]["embedding"]
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Embedding provider credentials invalid or missing: Request failed ({type(e).__name__}): {e}"
+            )
 
 
 class GenericEmbeddingClient(BaseEmbeddingClient):
