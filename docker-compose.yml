@@ -37,19 +37,13 @@ services:
       - QDRANT_URL=${QDRANT_URL:-}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-obsidian_rag}
-      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-gemini-embedding-2}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
     volumes:
       - backend_data:/app/data
       - backend_uploads:/app/uploads
       - backend_voice_samples:/app/voice_samples
       - /var/run/docker.sock:/var/run/docker.sock
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
     networks:
       - obsidian-network
 
@@ -70,8 +64,7 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in the root .env file}
       - BACKEND_URL=http://backend:8001
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     networks:
       - obsidian-network
 
@@ -93,14 +86,7 @@ services:
     volumes:
       - wa_auth_data:/app/auth
     depends_on:
-      backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      - backend
     networks:
       - obsidian-network
 
@@ -117,16 +103,8 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - nginx_logs:/var/log/nginx
     depends_on:
-      frontend:
-        condition: service_healthy
-      backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      - frontend
+      - backend
     networks:
       - obsidian-network
 
@@ -139,8 +117,7 @@ services:
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
     depends_on:
-      nginx:
-        condition: service_healthy
+      - nginx
     networks:
       - obsidian-network
 
