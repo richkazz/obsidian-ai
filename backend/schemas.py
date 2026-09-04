@@ -737,6 +737,73 @@ class KBDocumentListResponse(BaseModel):
     documents: list[KBDocumentResponse]
 
 
+class KnowledgeBaseAppUpsertRequest(BaseModel):
+    app_id: str
+    external_id: str
+    name: str
+    description: str
+    tags: Optional[list[str]] = None
+    embedding_provider: Optional[str] = "google"
+    secret_id: Optional[str] = None
+
+
+class KnowledgeBaseAppUpsertResponse(BaseModel):
+    kb_id: str
+    app_id: str
+    external_id: str
+    name: str
+    description: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KnowledgeAppIngestRequest(BaseModel):
+    app_id: str
+    external_id: str
+    doc_type: str
+    title: str
+    content: str
+    metadata: Optional[dict] = None
+    document_external_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_content_not_empty(self):
+        if not self.content or not self.content.strip():
+            raise ValueError("content must not be empty or whitespace only")
+        return self
+
+
+class KnowledgeAppIngestResponse(BaseModel):
+    doc_id: str
+    kb_id: str
+    app_id: str
+    external_id: str
+    doc_type: str
+    title: str
+    indexed: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KBSearchRequest(BaseModel):
+    query: str
+    top_k: int = 5
+
+
+class KBSearchResultItem(BaseModel):
+    text: str
+    score: float
+    metadata: Optional[dict] = None
+
+
+class KBSearchResponse(BaseModel):
+    results: list[KBSearchResultItem]
+
+
 # ============================================================================
 # Workflow Schedule Schemas
 # ============================================================================
