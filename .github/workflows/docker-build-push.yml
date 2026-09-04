@@ -1,4 +1,5 @@
 name: Build and Push Docker Images to GHCR
+
 on:
   push:
     branches:
@@ -37,10 +38,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -48,7 +47,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -58,7 +56,6 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
             type=sha,format=short
             type=semver,pattern={{version}}
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -74,12 +71,15 @@ jobs:
     name: Deploy to VM
     needs: build-and-push
     runs-on: ubuntu-latest
-    # Only deploy on a real push to main/master (not on PRs, and not on tag
-    # pushes, since "git pull" tracks a branch, not a tag), or when you
-    # manually trigger the workflow via workflow_dispatch.
+    # Only deploy on a real push to main/master (not PRs, not tag pushes,
+    # since "git pull" tracks a branch, not a tag), or a manual dispatch.
     if: >
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    # Prevents two deploys racing on the same small VM if pushes land close together.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
@@ -93,24 +93,47 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           envs: GHCR_TOKEN,GHCR_ACTOR,REPO_OWNER
+          # Longer timeout: pulls on a 1GB VM can take a while, especially
+          # if several images changed in the same push.
+          command_timeout: 20m
           script: |
             set -e
-
             cd "${{ secrets.DEPLOY_PATH }}"
 
-            # Log in to GHCR so `docker compose pull` can fetch the images
-            # that were just pushed (needed if the packages are private).
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
-
-            # Pull the latest code (compose file, nginx config, etc.)
             git pull origin ${{ github.ref_name }}
-
-            # Make sure the compose file resolves images under the right owner
             export GITHUB_REPOSITORY_OWNER="$REPO_OWNER"
 
-            # Pull the freshly-built images and restart only what changed
+            PREV_TAG=$(cat .last_good_tag 2>/dev/null || echo latest)
+            export IMAGE_TAG=$(git rev-parse --short HEAD)
+            echo "Deploying tag: $IMAGE_TAG (previous good: $PREV_TAG)"
+
+            # Pull images one at a time — the VM only has 1GB RAM, and
+            # parallel pulls/extraction was the main cause of slow/failed
+            # deploys (memory pressure, occasional OOM kills).
+            export COMPOSE_PARALLEL_LIMIT=1
             docker compose pull
+
             docker compose up -d --remove-orphans
 
-            # Clean up dangling (untagged) image layers left behind
-            docker image prune -f
+            echo "Waiting for backend health check..."
+            HEALTHY=0
+            for i in $(seq 1 36); do
+              if curl -sf http://localhost:8001/health >/dev/null 2>&1; then
+                HEALTHY=1
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$HEALTHY" = "1" ]; then
+              echo "$IMAGE_TAG" > .last_good_tag
+              docker image prune -f
+              echo "Deploy succeeded on $IMAGE_TAG"
+            else
+              echo "Health check failed after 3 minutes — rolling back to $PREV_TAG"
+              export IMAGE_TAG=$PREV_TAG
+              docker compose up -d --remove-orphans
+              echo "Rolled back to $PREV_TAG"
+              exit 1
+            fi

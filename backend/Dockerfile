@@ -1,40 +1,49 @@
-FROM python:3.12-slim
-
+# =========================
+# Build stage — has compilers, git, uv; discarded after the venv is built
+# =========================
+FROM python:3.12-slim AS builder
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive
-
 WORKDIR /app
 
-# Install system dependencies (ffmpeg, sox, git, build essentials, curl)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
     git \
-    ffmpeg \
-    sox \
-    libsox-fmt-all \
+    curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# Copy dependency definition files
 COPY pyproject.toml uv.lock ./
-
-# Sync dependencies using uv
 RUN uv sync --frozen --no-cache
 
-# Copy application source code
+# =========================
+# Runtime stage — only what's needed to actually run the app
+# =========================
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    PATH="/app/.venv/bin:$PATH"
+WORKDIR /app
+
+# Runtime-only deps: ffmpeg/sox for audio, curl for the healthcheck.
+# No build-essential, no git — they never ship to the VM.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    sox \
+    libsox-fmt-all \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/.venv /app/.venv
 COPY . .
 
-# Expose FastAPI backend port
 EXPOSE 8001
 
-# Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8001/health || exit 1
 
-# Start FastAPI app
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

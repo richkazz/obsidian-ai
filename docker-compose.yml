@@ -8,6 +8,7 @@ services:
       dockerfile: Dockerfile
     container_name: obsidian-backend
     restart: unless-stopped
+    mem_limit: 400m
     ports:
       - "8001:8001"
     environment:
@@ -47,6 +48,12 @@ services:
       - backend_uploads:/app/uploads
       - backend_voice_samples:/app/voice_samples
       - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - obsidian-network
 
@@ -57,6 +64,7 @@ services:
       dockerfile: Dockerfile
     container_name: obsidian-frontend
     restart: unless-stopped
+    mem_limit: 200m
     ports:
       - "3000:3000"
     environment:
@@ -70,7 +78,13 @@ services:
       - BACKEND_URL=http://backend:8001
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - obsidian-network
 
@@ -81,6 +95,7 @@ services:
       dockerfile: Dockerfile
     container_name: obsidian-wa-bridge
     restart: unless-stopped
+    mem_limit: 150m
     ports:
       - "3200:3200"
     environment:
@@ -92,7 +107,15 @@ services:
       - wa_auth_data:/app/auth
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      # NOTE: adjust this path if wa-bridge doesn't expose /health — swap for
+      # any lightweight route that returns 200 once the sidecar is ready.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - obsidian-network
 
@@ -100,6 +123,7 @@ services:
     image: nginx:alpine
     container_name: obsidian-nginx
     restart: unless-stopped
+    mem_limit: 50m
     ports:
       - "8080:80"
       - "8443:443"
@@ -108,8 +132,16 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - nginx_logs:/var/log/nginx
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - obsidian-network
 
@@ -117,11 +149,13 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: obsidian-cloudflared
     restart: unless-stopped
+    mem_limit: 50m
     command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
     depends_on:
-      - nginx
+      nginx:
+        condition: service_healthy
     networks:
       - obsidian-network
 
