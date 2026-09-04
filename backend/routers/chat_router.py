@@ -1439,6 +1439,47 @@ def _merge_tools(native_tools: list[dict] | None, mcp_tools: list[dict]) -> list
     return all_tools if all_tools else None
 
 
+def _to_maf_tools(tools: list | None, db, sandbox_container_id: str | None = None) -> list[FunctionTool] | None:
+    """Convert OpenAI-style schemas into executable tools for MAF Agent.run."""
+    if not tools:
+        return None
+
+    maf_tools = []
+    for tool_definition in tools:
+        if isinstance(tool_definition, FunctionTool):
+            maf_tools.append(tool_definition)
+            continue
+        if not isinstance(tool_definition, dict):
+            continue
+
+        function = tool_definition.get("function", {})
+        name = function.get("name")
+        if not name:
+            continue
+        description = function.get("description", "")
+        input_model = function.get("parameters") or {"type": "object", "properties": {}}
+
+        def _make_handler(tool_name):
+            async def handler(**kwargs):
+                return await _execute_mcp_or_native_tool(
+                    tool_name,
+                    json.dumps(kwargs),
+                    {},
+                    db,
+                    sandbox_container_id,
+                )
+            return handler
+
+        maf_tools.append(FunctionTool(
+            func=_make_handler(name),
+            name=name,
+            description=description,
+            input_model=input_model,
+        ))
+
+    return maf_tools or None
+
+
 async def _execute_mcp_or_native_tool(
     tc_name: str, tc_arguments: str, mcp_connections: dict[str, MCPConnection], db,
     sandbox_container_id: str | None = None,
@@ -2186,7 +2227,7 @@ async def _chat_sqlite(request: ChatRequest, current_user: TokenData, db: DBSess
         request.message, str(request.session_id), image_parts,
         kb_ids=_agent_kb_ids, kb_names=_agent_kb_names,
         edit_target=_edit_target_early, past_messages=past_messages,
-        owner_id=str(user.id), db=db,
+        owner_id=str(current_user.user_id), db=db,
     )
     messages.append(_user_llm_msg)
 
@@ -2615,10 +2656,11 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
         }
 
         try:
+            maf_tools = _to_maf_tools(tools, db, sandbox_container_id_override)
             run_stream = llm.run(
                 to_maf_messages(messages),
                 stream=True,
-                tools=tools,
+                tools=maf_tools,
                 middleware=[hitl_and_proposal_middleware],
                 function_invocation_kwargs=function_invocation_kwargs,
             )
@@ -2827,7 +2869,12 @@ async def _stream_response_with_mcp(llm, messages, system_prompt, db, session_id
                 # Merge dynamically approved tools into tools list for this round
                 _dynamic_schemas_mcp = _get_dynamic_tool_schemas_sqlite(session_id, db)
                 _round_tools_mcp = list(tools) + _dynamic_schemas_mcp if tools else (_dynamic_schemas_mcp or None)
-                async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=_round_tools_mcp, response_schema=response_schema):
+                _round_maf_tools = _to_maf_tools(
+                    _round_tools_mcp,
+                    db,
+                    sandbox_container_id_override,
+                )
+                async for chunk in llm.chat_stream(messages, system_prompt=system_prompt, tools=_round_maf_tools, response_schema=response_schema):
                     if chunk.type == "content":
                         prev_len = len(full_content)
                         full_content += chunk.content
