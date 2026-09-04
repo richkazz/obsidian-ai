@@ -14,7 +14,7 @@ from models import Session as SessionModel, Message, Agent, LLMProvider, ToolDef
 from schemas import ChatRequest, RateMessageRequest, HITLRespondRequest, HITLApprovalResponse, HITLPendingListResponse, ToolProposalResponse, ToolProposalPendingListResponse, AsyncJobResponse, AsyncJobPendingListResponse
 from auth import get_current_user, TokenData
 from encryption import decrypt_api_key
-from llm.base import LLMMessage, LLMToolCall
+from llm.base import LLMMessage, LLMToolCall, to_maf_messages
 from llm.provider_factory import create_provider_from_config
 from mcp_client import connect_mcp_server, parse_mcp_tool_name, MCPConnection
 from file_storage import FileStorageService
@@ -2581,7 +2581,7 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
 
         try:
             run_stream = llm.run(
-                messages,
+                to_maf_messages(messages),
                 stream=True,
                 tools=tools,
                 middleware=[hitl_and_proposal_middleware],

@@ -22,6 +22,74 @@ class LLMMessage:
             if part.get("type") == "text"
         )
 
+    @property
+    def contents(self) -> list:
+        """Return content list for compatibility with MAF Message attributes."""
+        if isinstance(self.content, list):
+            return self.content
+        if self.content is not None:
+            return [self.content]
+        return []
+
+    @contents.setter
+    def contents(self, value):
+        if isinstance(value, list) and len(value) == 1 and isinstance(value[0], str):
+            self.content = value[0]
+        else:
+            self.content = value
+
+    @property
+    def additional_properties(self) -> dict:
+        """Return additional properties dictionary for compatibility with MAF Message attributes."""
+        if not hasattr(self, "_additional_properties_val"):
+            add_props = {}
+            if self.tool_calls:
+                add_props["tool_calls"] = self.tool_calls
+            if self.tool_call_id:
+                add_props["tool_call_id"] = self.tool_call_id
+            self._additional_properties_val = add_props
+        return self._additional_properties_val
+
+    @additional_properties.setter
+    def additional_properties(self, value):
+        self._additional_properties_val = value or {}
+
+    def to_maf_message(self):
+        """Convert this LLMMessage to a MAF native Message object."""
+        from agent_framework import Message
+        contents = []
+        if isinstance(self.content, str):
+            if self.content or self.role == "assistant":
+                contents.append(self.content)
+        elif isinstance(self.content, list):
+            contents.extend(self.content)
+
+        add_props = {}
+        if self.tool_calls:
+            add_props["tool_calls"] = self.tool_calls
+        if self.tool_call_id:
+            add_props["tool_call_id"] = self.tool_call_id
+
+        return Message(
+            role=self.role,
+            contents=contents if contents else None,
+            additional_properties=add_props if add_props else None,
+        )
+
+
+def to_maf_messages(messages: list) -> list:
+    """Convert a sequence of messages (mix of LLMMessage, MAF Message, or other types) to MAF native Message objects."""
+    from agent_framework import Message
+    maf_msgs = []
+    for msg in messages:
+        if isinstance(msg, Message):
+            maf_msgs.append(msg)
+        elif isinstance(msg, LLMMessage):
+            maf_msgs.append(msg.to_maf_message())
+        else:
+            maf_msgs.append(msg)
+    return maf_msgs
+
 
 @dataclass
 class LLMToolCall:
