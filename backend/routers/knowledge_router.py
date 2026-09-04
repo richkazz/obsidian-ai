@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 from typing import Union
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from config import DATABASE_TYPE
@@ -21,6 +21,7 @@ from auth import (
     get_current_user, get_current_user_or_api_client, TokenData, APIClientData, require_permission
 )
 from file_storage import FileStorageService
+from rate_limiter import limiter
 from rag_service import RAGService
 from services.key_resolution_service import resolve_embedding_credentials
 
@@ -123,12 +124,25 @@ def _owns_kb(kb, current_user: TokenData, is_mongo: bool = False) -> bool:
 # ---------------------------------------------------------------------------
 
 @router.put("/knowledge/apps/upsert", response_model=KnowledgeBaseAppUpsertResponse)
+@limiter.limit("60/minute")
 async def upsert_app_knowledge_base(
+    request: Request,
     data: KnowledgeBaseAppUpsertRequest,
     response: Response,
     auth: Union[TokenData, APIClientData] = Depends(get_current_user_or_api_client),
     db: Session = Depends(get_db),
 ):
+    """
+    Upsert (Create or Update) an application-scoped Knowledge Base.
+
+    Idempotency Contract:
+      - Unique Key Pair: (owner_id, app_id, external_id)
+      - Status Codes:
+        * 201 Created: Returned when no active KB matches (owner_id, app_id, external_id) and a new KB is created.
+        * 200 OK: Returned when an existing KB matching (owner_id, app_id, external_id) is updated in-place.
+      - Root Document Behavior: Upserting automatically manages a root document identified by external_id `{external_id}_root`
+        containing the KB description, replaces any previous vector embeddings for that root document, and re-indexes the new content.
+    """
     owner_id = _get_auth_user_id(auth)
     user_id_int = int(owner_id) if str(owner_id).isdigit() else None
 
@@ -310,12 +324,26 @@ async def upsert_app_knowledge_base(
 
 
 @router.post("/knowledge/apps/ingest", response_model=KnowledgeAppIngestResponse)
+@limiter.limit("100/minute")
 async def ingest_app_knowledge_document(
+    request: Request,
     data: KnowledgeAppIngestRequest,
     response: Response,
     auth: Union[TokenData, APIClientData] = Depends(get_current_user_or_api_client),
     db: Session = Depends(get_db),
 ):
+    """
+    Ingest (Create or Update) a document into an existing application-scoped Knowledge Base.
+
+    Idempotency Contract:
+      - Parent KB Scoping: Requires an active Knowledge Base matching (owner_id, app_id, external_id). If not found, returns 404 NOT FOUND.
+      - Document Scope Key: (kb_id, document_external_id) when `document_external_id` is supplied.
+      - Status Codes:
+        * 201 Created: Returned when ingesting a new document or when no document matches `document_external_id`.
+        * 200 OK: Returned when updating an existing document matching `document_external_id`.
+      - Vector Re-indexing: When `document_external_id` is provided, existing vector embeddings for that document external ID
+        are cleared before new vector chunks are indexed.
+    """
     owner_id = _get_auth_user_id(auth)
 
     kb = None
@@ -468,11 +496,16 @@ async def ingest_app_knowledge_document(
 
 
 @router.get("/knowledge/apps/{app_id}", response_model=KnowledgeBaseListResponse)
+@limiter.limit("60/minute")
 async def list_app_knowledge_bases(
+    request: Request,
     app_id: str,
     auth: Union[TokenData, APIClientData] = Depends(get_current_user_or_api_client),
     db: Session = Depends(get_db),
 ):
+    """
+    List all active Knowledge Bases scoped to a specific `app_id` owned by the authenticated user/API client.
+    """
     owner_id = _get_auth_user_id(auth)
 
     if DATABASE_TYPE == "mongo":
