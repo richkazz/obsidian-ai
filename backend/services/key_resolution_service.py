@@ -46,6 +46,11 @@ async def resolve_embedding_credentials(
                 prov = await LLMProviderCollection.find_by_id(mongo_db, str(secret_id))
                 if prov and str(prov.get("user_id")) == str(user_id) and prov.get("api_key"):
                     api_key = decrypt_api_key(prov["api_key"])
+                else:
+                    logger.warning(
+                        f"[resolve_embedding_credentials] secret_id '{secret_id}' specified for user '{user_id}' "
+                        "was not found or does not belong to the user in UserSecrets or LLMProviders."
+                    )
         else:
             if db is not None:
                 from models import UserSecret, LLMProvider
@@ -63,9 +68,17 @@ async def resolve_embedding_credentials(
                         ).first()
                         if prov and prov.api_key:
                             api_key = decrypt_api_key(prov.api_key)
+                        else:
+                            logger.warning(
+                                f"[resolve_embedding_credentials] secret_id '{secret_id}' specified for user '{user_id}' "
+                                "was not found or does not belong to the user in UserSecrets or LLMProviders."
+                            )
 
     if not api_key:
-        # Fallback: check if the user has an active LLMProvider matching provider_type
+        logger.info(
+            f"[resolve_embedding_credentials] Secret resolution yielded no API key for user '{user_id}'. "
+            f"Attempting fallback to active LLMProvider matching provider_type '{provider}'."
+        )
         if DATABASE_TYPE == "mongo":
             mongo_db = get_database()
             prov = await mongo_db["llm_providers"].find_one({
@@ -87,7 +100,10 @@ async def resolve_embedding_credentials(
                     api_key = decrypt_api_key(prov.api_key)
 
     if not api_key:
-        # Default placeholder/dummy key if no API key is stored in UserSecret or LLMProvider
+        logger.warning(
+            f"[resolve_embedding_credentials] No API key could be resolved for user '{user_id}' "
+            f"and provider '{provider}'. Defaulting to 'dummy_embedding_key'. Vector operations may fail if live API is called."
+        )
         api_key = "dummy_embedding_key"
 
     return provider, api_key, model

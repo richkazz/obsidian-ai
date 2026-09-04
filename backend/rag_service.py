@@ -375,6 +375,7 @@ class RAGService:
 
     @staticmethod
     def has_index(session_id: str) -> bool:
+        logger.warning("DEPRECATION WARNING: Session-based RAG (has_index) is deprecated. Use Knowledge Base (KB) scoped RAG APIs instead.")
         client = get_qdrant_client()
         try:
             results = client.scroll(
@@ -396,6 +397,7 @@ class RAGService:
     @staticmethod
     async def index_document_async(session_id: str, text: str, metadata: dict, api_key: Optional[str] = None):
         """Chunk text, generate embeddings, and upsert to Qdrant."""
+        logger.warning("DEPRECATION WARNING: Session-based RAG (index_document_async) is deprecated. Use Knowledge Base (KB) scoped RAG APIs (index_kb_document_async or /knowledge/apps/ingest) instead.")
         chunks = RAGService._chunk_text(text, chunk_size=500, overlap=50)
         if not chunks:
             return
@@ -435,11 +437,13 @@ class RAGService:
     @staticmethod
     def index_document(session_id: str, text: str, metadata: dict, api_key: Optional[str] = None):
         """Synchronous wrapper for index_document_async."""
+        logger.warning("DEPRECATION WARNING: Session-based RAG (index_document) is deprecated. Use Knowledge Base (KB) scoped RAG APIs (index_kb_document) instead.")
         _run_coroutine_sync(RAGService.index_document_async(session_id, text, metadata, api_key=api_key))
 
     @staticmethod
     async def search_async(session_id: str, query: str, top_k: int = 5, api_key: Optional[str] = None) -> List[dict]:
         """Search vectors in Qdrant for a given session."""
+        logger.warning("DEPRECATION WARNING: Session-based RAG (search_async) is deprecated. Use Knowledge Base (KB) scoped RAG APIs (query_kb_async or /knowledge-bases/{kb_id}/search) instead.")
         try:
             client = get_embedding_client(provider="google", api_key=api_key or "session_fallback_key")
             query_vector = await client.embed(query)
@@ -475,6 +479,7 @@ class RAGService:
     @staticmethod
     def search(session_id: str, query: str, top_k: int = 5, api_key: Optional[str] = None) -> List[dict]:
         """Synchronous wrapper for search_async."""
+        logger.warning("DEPRECATION WARNING: Session-based RAG (search) is deprecated. Use Knowledge Base (KB) scoped RAG APIs (query_kb) instead.")
         return _run_coroutine_sync(RAGService.search_async(session_id, query, top_k, api_key=api_key))
 
     # -- Knowledge Base RAG aliases -------------------------------------------
