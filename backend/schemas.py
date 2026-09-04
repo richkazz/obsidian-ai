@@ -663,17 +663,38 @@ class AdminUserUpdate(BaseModel):
 class KnowledgeBaseCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    owner_id: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
+    scope_type: str = "workspace"
+    embedding_provider: str = "google"
+    embedding_model: str = "text-embedding-004"
+    secret_id: Optional[str] = None
     is_shared: bool = False
 
 class KnowledgeBaseUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    owner_id: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
+    scope_type: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+    secret_id: Optional[str] = None
     is_shared: Optional[bool] = None
 
 class KnowledgeBaseResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
+    owner_id: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
+    scope_type: str = "workspace"
+    embedding_provider: str = "google"
+    embedding_model: str = "text-embedding-004"
+    secret_id: Optional[str] = None
     is_shared: bool
     is_active: bool
     document_count: int = 0
@@ -688,6 +709,9 @@ class KnowledgeBaseListResponse(BaseModel):
 class KBDocumentCreate(BaseModel):
     doc_type: str                          # "text" | "file"
     name: str
+    description: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
     content_text: Optional[str] = None    # for text type
     file_data: Optional[str] = None       # base64 data URI for file type
     filename: Optional[str] = None
@@ -698,6 +722,9 @@ class KBDocumentResponse(BaseModel):
     kb_id: str
     doc_type: str
     name: str
+    description: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
     filename: Optional[str] = None
     media_type: Optional[str] = None
     indexed: bool

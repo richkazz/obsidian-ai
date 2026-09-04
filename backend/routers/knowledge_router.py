@@ -33,6 +33,13 @@ def _kb_to_response(kb, doc_count: int = 0, is_mongo: bool = False) -> Knowledge
             id=str(kb["_id"]),
             name=kb["name"],
             description=kb.get("description"),
+            owner_id=kb.get("owner_id") or kb.get("user_id"),
+            app_id=kb.get("app_id"),
+            external_id=kb.get("external_id"),
+            scope_type=kb.get("scope_type", "workspace"),
+            embedding_provider=kb.get("embedding_provider", "google"),
+            embedding_model=kb.get("embedding_model", "text-embedding-004"),
+            secret_id=kb.get("secret_id"),
             is_shared=kb.get("is_shared", False),
             is_active=kb.get("is_active", True),
             document_count=doc_count,
@@ -42,6 +49,13 @@ def _kb_to_response(kb, doc_count: int = 0, is_mongo: bool = False) -> Knowledge
         id=str(kb.id),
         name=kb.name,
         description=kb.description,
+        owner_id=kb.owner_id or (str(kb.user_id) if kb.user_id is not None else None),
+        app_id=kb.app_id,
+        external_id=kb.external_id,
+        scope_type=kb.scope_type or "workspace",
+        embedding_provider=kb.embedding_provider or "google",
+        embedding_model=kb.embedding_model or "text-embedding-004",
+        secret_id=kb.secret_id,
         is_shared=kb.is_shared,
         is_active=kb.is_active,
         document_count=doc_count,
@@ -101,21 +115,36 @@ async def create_knowledge_base(
     if data.is_shared and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Only admins can create shared knowledge bases")
 
+    owner_id_val = data.owner_id or current_user.user_id
     if DATABASE_TYPE == "mongo":
         mongo_db = get_database()
         doc = {
             "user_id": current_user.user_id,
+            "owner_id": owner_id_val,
+            "app_id": data.app_id,
+            "external_id": data.external_id,
             "name": data.name,
             "description": data.description,
+            "scope_type": data.scope_type,
+            "embedding_provider": data.embedding_provider,
+            "embedding_model": data.embedding_model,
+            "secret_id": data.secret_id,
             "is_shared": data.is_shared,
         }
         created = await KnowledgeBaseCollection.create(mongo_db, doc)
         return _kb_to_response(created, is_mongo=True)
 
     kb = KnowledgeBase(
-        user_id=int(current_user.user_id),
+        user_id=int(current_user.user_id) if current_user.user_id.isdigit() else None,
+        owner_id=owner_id_val,
+        app_id=data.app_id,
+        external_id=data.external_id,
         name=data.name,
         description=data.description,
+        scope_type=data.scope_type,
+        embedding_provider=data.embedding_provider,
+        embedding_model=data.embedding_model,
+        secret_id=data.secret_id,
         is_shared=data.is_shared,
     )
     db.add(kb)

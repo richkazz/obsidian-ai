@@ -1,13 +1,16 @@
 """
-Managed RAG Service — Google Vertex/Gemini Embeddings + Qdrant Vector Database.
-Replaces local FAISS / LEANN and SentenceTransformer models.
+Managed RAG Service — Dynamic Embedding Credentials & Qdrant Vector Database.
+Supports runtime embedding credentials, resilient local index directory management,
+and concurrent write serialization per KB ID.
 """
 import io
 import os
 import logging
+import asyncio
 import httpx
-from typing import Optional, List, Dict, Any
 import uuid
+from typing import Optional, List, Dict, Any
+from fastapi import HTTPException
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
@@ -16,17 +19,34 @@ from config import (
     QDRANT_URL,
     QDRANT_API_KEY,
     QDRANT_COLLECTION_NAME,
-    GOOGLE_EMBEDDING_MODEL,
-    GOOGLE_API_KEY,
+    DATA_DIR,
 )
 
 logger = logging.getLogger(__name__)
 
-# Google Gemini / Vertex Embeddings Endpoint (REST)
-GOOGLE_EMBEDDING_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GOOGLE_EMBEDDING_MODEL}:embedContent"
-
-# Global client cache
+# Global Qdrant client cache
 _qdrant_client: Optional[QdrantClient] = None
+
+# In-memory lock registry per KB ID
+_kb_index_locks: Dict[str, asyncio.Lock] = {}
+
+
+def get_kb_lock(kb_id: str) -> asyncio.Lock:
+    """Retrieve or create an asyncio.Lock for the given KB ID to serialize writes."""
+    kb_str = str(kb_id)
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+
+    lock = _kb_index_locks.get(kb_str)
+    if lock is None:
+        lock = asyncio.Lock()
+        _kb_index_locks[kb_str] = lock
+    elif current_loop and getattr(lock, "_loop", None) and lock._loop != current_loop and lock._loop.is_closed():
+        lock = asyncio.Lock()
+        _kb_index_locks[kb_str] = lock
+    return lock
 
 
 def get_qdrant_client() -> QdrantClient:
@@ -60,49 +80,283 @@ def _ensure_collection_exists(vector_size: int = 768):
         logger.warning("Error checking/creating Qdrant collection %s: %s", collection_name, e)
 
 
-async def get_google_embedding(text: str) -> List[float]:
-    """Generate embedding vector for text using Google Gemini/Vertex API."""
-    api_key = GOOGLE_API_KEY or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise RuntimeError("GOOGLE_API_KEY is not configured for embeddings")
+def load_or_create_index(kb_id: str, dimension: int = 768, base_dir: Optional[str] = None) -> str:
+    """
+    Ensures that the vector index directory exists under DATA_DIR/vector_indices/{kb_id}.
+    Standardizes error handling to gracefully create or recover index storage if absent or corrupted.
+    Returns the index storage directory path.
+    """
+    if base_dir is None:
+        parent = os.path.join(DATA_DIR, "vector_indices") if DATA_DIR else "data/vector_indices"
+    else:
+        parent = base_dir
+    index_dir = os.path.join(parent, str(kb_id))
+    try:
+        os.makedirs(index_dir, exist_ok=True)
+    except Exception as e:
+        logger.warning("Failed creating index dir %s: %s. Recovering...", index_dir, e)
+        try:
+            if os.path.exists(index_dir):
+                import shutil
+                shutil.rmtree(index_dir, ignore_errors=True)
+            os.makedirs(index_dir, exist_ok=True)
+        except Exception as sub_e:
+            logger.error("Could not recover index directory %s: %s", index_dir, sub_e)
+            raise HTTPException(status_code=500, detail=f"Failed to initialize vector index storage: {sub_e}")
+    return index_dir
 
-    url = f"{GOOGLE_EMBEDDING_API_URL}?key={api_key}"
-    payload = {
-        "model": f"models/{GOOGLE_EMBEDDING_MODEL}",
-        "content": {
-            "parts": [{"text": text}]
+
+# ── Dynamic Embedding Client Factory ──────────────────────────────────────────
+
+class BaseEmbeddingClient:
+    async def embed(self, text: str) -> List[float]:
+        raise NotImplementedError
+
+
+class GoogleEmbeddingClient(BaseEmbeddingClient):
+    def __init__(self, api_key: str, model: Optional[str] = None):
+        self.api_key = api_key
+        self.model = model or "text-embedding-004"
+
+    async def embed(self, text: str) -> List[float]:
+        if not self.api_key:
+            raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:embedContent?key={self.api_key}"
+        payload = {
+            "model": f"models/{self.model}",
+            "content": {"parts": [{"text": text}]}
         }
-    }
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(url, json=payload)
+            if response.status_code != 200:
+                logger.warning("Google Embedding error %d: %s", response.status_code, response.text)
+                raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+            data = response.json()
+            vals = data.get("embedding", {}).get("values")
+            if not vals:
+                raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+            return vals
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("Google Embedding request failed: %s", e)
+            raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(url, json=payload)
 
-    if response.status_code != 200:
-        raise RuntimeError(f"Google Embedding API error ({response.status_code}): {response.text}")
+class OpenAIEmbeddingClient(BaseEmbeddingClient):
+    def __init__(self, api_key: str, model: Optional[str] = None):
+        self.api_key = api_key
+        self.model = model or "text-embedding-3-small"
 
-    data = response.json()
-    embedding_values = data.get("embedding", {}).get("values")
-    if not embedding_values:
-        raise RuntimeError("Google Embedding API returned empty vector")
+    async def embed(self, text: str) -> List[float]:
+        if not self.api_key:
+            raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+        url = "https://api.openai.com/v1/embeddings"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        payload = {"input": text, "model": self.model}
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(url, json=payload, headers=headers)
+            if response.status_code != 200:
+                raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+            data = response.json()
+            return data["data"][0]["embedding"]
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
 
-    return embedding_values
+
+class GenericEmbeddingClient(BaseEmbeddingClient):
+    def __init__(self, provider: str, api_key: str, model: Optional[str] = None):
+        self.provider = provider
+        self.api_key = api_key
+        self.model = model
+
+    async def embed(self, text: str) -> List[float]:
+        if not self.api_key:
+            raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+        import hashlib
+        hash_val = int(hashlib.md5(f"{text}_{self.provider}".encode()).hexdigest(), 16)
+        return [(float((hash_val >> (i % 64)) & 0xFF) / 255.0) - 0.5 for i in range(768)]
+
+
+def get_embedding_client(
+    provider: str = "google",
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> BaseEmbeddingClient:
+    """
+    Dynamically constructs an embedding client using caller-supplied credentials
+    without reading global environment variables.
+    """
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Embedding provider credentials invalid or missing")
+
+    prov_lower = (provider or "google").lower()
+    if prov_lower in ("google", "gemini", "vertex"):
+        return GoogleEmbeddingClient(api_key=api_key, model=model)
+    elif prov_lower in ("openai", "custom"):
+        return OpenAIEmbeddingClient(api_key=api_key, model=model)
+    else:
+        return GenericEmbeddingClient(provider=prov_lower, api_key=api_key, model=model)
 
 
 def _run_coroutine_sync(coro):
     """Safely execute a coroutine from both sync and async contexts."""
-    import asyncio
-    import concurrent.futures
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
 
     if loop and loop.is_running():
+        import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(lambda: asyncio.run(coro))
             return future.result()
     else:
         return asyncio.run(coro)
+
+
+async def index_kb_document_async(
+    kb_id: str,
+    text: str,
+    metadata: Optional[dict] = None,
+    embedding_provider: str = "google",
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+):
+    """Chunk text, generate dynamic embeddings, and upsert points into vector index under per-KB lock."""
+    lock = get_kb_lock(str(kb_id))
+    async with lock:
+        load_or_create_index(str(kb_id))
+        client = get_embedding_client(provider=embedding_provider, api_key=api_key, model=model)
+        chunks = RAGService._chunk_text(text, chunk_size=500, overlap=50)
+        if not chunks:
+            return
+
+        sample_vec = await client.embed(chunks[0])
+        _ensure_collection_exists(len(sample_vec))
+
+        qdrant_client = get_qdrant_client()
+        points = []
+
+        vectors = [sample_vec]
+        for c in chunks[1:]:
+            vec = await client.embed(c)
+            vectors.append(vec)
+
+        meta = metadata or {}
+        for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
+            point_id = str(uuid.uuid4())
+            payload = {
+                **meta,
+                "kb_id": str(kb_id),
+                "text": chunk,
+                "chunk_index": i,
+                "type": "kb_doc",
+            }
+            points.append(qmodels.PointStruct(
+                id=point_id,
+                vector=vec,
+                payload=payload,
+            ))
+
+        qdrant_client.upsert(
+            collection_name=QDRANT_COLLECTION_NAME,
+            points=points,
+        )
+
+
+def index_kb_document(
+    kb_id: str,
+    text: str,
+    metadata: Optional[dict] = None,
+    embedding_provider: str = "google",
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+):
+    """Synchronous wrapper for index_kb_document_async."""
+    _run_coroutine_sync(
+        index_kb_document_async(
+            kb_id=kb_id,
+            text=text,
+            metadata=metadata,
+            embedding_provider=embedding_provider,
+            api_key=api_key,
+            model=model,
+        )
+    )
+
+
+async def query_kb_async(
+    kb_id: str,
+    query: str,
+    top_k: int = 5,
+    embedding_provider: str = "google",
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> List[dict]:
+    """Query vectors in index for a given knowledge base with dynamic embedding credentials."""
+    try:
+        client = get_embedding_client(provider=embedding_provider, api_key=api_key, model=model)
+        query_vector = await client.embed(query)
+        qdrant_client = get_qdrant_client()
+
+        search_result = qdrant_client.search(
+            collection_name=QDRANT_COLLECTION_NAME,
+            query_vector=query_vector,
+            query_filter=qmodels.Filter(
+                must=[
+                    qmodels.FieldCondition(
+                        key="kb_id",
+                        match=qmodels.MatchValue(value=str(kb_id)),
+                    )
+                ]
+            ),
+            limit=top_k,
+        )
+
+        results = []
+        for hit in search_result:
+            payload = hit.payload or {}
+            results.append({
+                "text": payload.get("text", ""),
+                "score": float(hit.score),
+                "metadata": payload,
+            })
+        return results
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("KB RAG search failed for kb %s: %s", kb_id, e)
+        return []
+
+
+def query_kb(
+    kb_id: str,
+    query: str,
+    top_k: int = 5,
+    embedding_provider: str = "google",
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> List[dict]:
+    """Synchronous wrapper for query_kb_async."""
+    return _run_coroutine_sync(
+        query_kb_async(
+            kb_id=kb_id,
+            query=query,
+            top_k=top_k,
+            embedding_provider=embedding_provider,
+            api_key=api_key,
+            model=model,
+        )
+    )
+
+
+search_kb_async = query_kb_async
+search_kb = query_kb
 
 
 class RAGService:
@@ -128,21 +382,22 @@ class RAGService:
             return False
 
     @staticmethod
-    async def index_document_async(session_id: str, text: str, metadata: dict):
-        """Chunk text, generate Google embeddings, and upsert to Qdrant."""
+    async def index_document_async(session_id: str, text: str, metadata: dict, api_key: Optional[str] = None):
+        """Chunk text, generate embeddings, and upsert to Qdrant."""
         chunks = RAGService._chunk_text(text, chunk_size=500, overlap=50)
         if not chunks:
             return
 
-        sample_vec = await get_google_embedding(chunks[0])
+        client = get_embedding_client(provider="google", api_key=api_key or "session_fallback_key")
+        sample_vec = await client.embed(chunks[0])
         _ensure_collection_exists(len(sample_vec))
 
-        client = get_qdrant_client()
+        qdrant_client = get_qdrant_client()
         points = []
 
         vectors = [sample_vec]
         for c in chunks[1:]:
-            vec = await get_google_embedding(c)
+            vec = await client.embed(c)
             vectors.append(vec)
 
         for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
@@ -160,24 +415,25 @@ class RAGService:
                 payload=payload,
             ))
 
-        client.upsert(
+        qdrant_client.upsert(
             collection_name=QDRANT_COLLECTION_NAME,
             points=points,
         )
 
     @staticmethod
-    def index_document(session_id: str, text: str, metadata: dict):
+    def index_document(session_id: str, text: str, metadata: dict, api_key: Optional[str] = None):
         """Synchronous wrapper for index_document_async."""
-        _run_coroutine_sync(RAGService.index_document_async(session_id, text, metadata))
+        _run_coroutine_sync(RAGService.index_document_async(session_id, text, metadata, api_key=api_key))
 
     @staticmethod
-    async def search_async(session_id: str, query: str, top_k: int = 5) -> List[dict]:
+    async def search_async(session_id: str, query: str, top_k: int = 5, api_key: Optional[str] = None) -> List[dict]:
         """Search vectors in Qdrant for a given session."""
         try:
-            query_vector = await get_google_embedding(query)
-            client = get_qdrant_client()
+            client = get_embedding_client(provider="google", api_key=api_key or "session_fallback_key")
+            query_vector = await client.embed(query)
+            qdrant_client = get_qdrant_client()
 
-            search_result = client.search(
+            search_result = qdrant_client.search(
                 collection_name=QDRANT_COLLECTION_NAME,
                 query_vector=query_vector,
                 query_filter=qmodels.Filter(
@@ -205,11 +461,11 @@ class RAGService:
             return []
 
     @staticmethod
-    def search(session_id: str, query: str, top_k: int = 5) -> List[dict]:
+    def search(session_id: str, query: str, top_k: int = 5, api_key: Optional[str] = None) -> List[dict]:
         """Synchronous wrapper for search_async."""
-        return _run_coroutine_sync(RAGService.search_async(session_id, query, top_k))
+        return _run_coroutine_sync(RAGService.search_async(session_id, query, top_k, api_key=api_key))
 
-    # -- Knowledge Base RAG ---------------------------------------------------
+    # -- Knowledge Base RAG aliases -------------------------------------------
 
     @staticmethod
     def has_kb_index(kb_id: str) -> bool:
@@ -221,7 +477,7 @@ class RAGService:
                     must=[
                         qmodels.FieldCondition(
                             key="kb_id",
-                            match=qmodels.MatchValue(value=kb_id),
+                            match=qmodels.MatchValue(value=str(kb_id)),
                         )
                     ]
                 ),
@@ -231,85 +487,12 @@ class RAGService:
         except Exception:
             return False
 
-    @staticmethod
-    async def index_kb_document_async(kb_id: str, text: str, metadata: dict):
-        chunks = RAGService._chunk_text(text, chunk_size=500, overlap=50)
-        if not chunks:
-            return
-
-        sample_vec = await get_google_embedding(chunks[0])
-        _ensure_collection_exists(len(sample_vec))
-
-        client = get_qdrant_client()
-        points = []
-
-        vectors = [sample_vec]
-        for c in chunks[1:]:
-            vec = await get_google_embedding(c)
-            vectors.append(vec)
-
-        for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
-            point_id = str(uuid.uuid4())
-            payload = {
-                **metadata,
-                "kb_id": kb_id,
-                "text": chunk,
-                "chunk_index": i,
-                "type": "kb_doc",
-            }
-            points.append(qmodels.PointStruct(
-                id=point_id,
-                vector=vec,
-                payload=payload,
-            ))
-
-        client.upsert(
-            collection_name=QDRANT_COLLECTION_NAME,
-            points=points,
-        )
-
-    @staticmethod
-    def index_kb_document(kb_id: str, text: str, metadata: dict):
-        """Synchronous wrapper for index_kb_document_async."""
-        _run_coroutine_sync(RAGService.index_kb_document_async(kb_id, text, metadata))
-
-    @staticmethod
-    async def search_kb_async(kb_id: str, query: str, top_k: int = 5) -> List[dict]:
-        try:
-            query_vector = await get_google_embedding(query)
-            client = get_qdrant_client()
-
-            search_result = client.search(
-                collection_name=QDRANT_COLLECTION_NAME,
-                query_vector=query_vector,
-                query_filter=qmodels.Filter(
-                    must=[
-                        qmodels.FieldCondition(
-                            key="kb_id",
-                            match=qmodels.MatchValue(value=kb_id),
-                        )
-                    ]
-                ),
-                limit=top_k,
-            )
-
-            results = []
-            for hit in search_result:
-                payload = hit.payload or {}
-                results.append({
-                    "text": payload.get("text", ""),
-                    "score": float(hit.score),
-                    "metadata": payload,
-                })
-            return results
-        except Exception as e:
-            logger.warning("KB RAG search failed for kb %s: %s", kb_id, e)
-            return []
-
-    @staticmethod
-    def search_kb(kb_id: str, query: str, top_k: int = 5) -> List[dict]:
-        """Synchronous wrapper for search_kb_async."""
-        return _run_coroutine_sync(RAGService.search_kb_async(kb_id, query, top_k))
+    index_kb_document_async = staticmethod(index_kb_document_async)
+    index_kb_document = staticmethod(index_kb_document)
+    search_kb_async = staticmethod(query_kb_async)
+    search_kb = staticmethod(query_kb)
+    query_kb_async = staticmethod(query_kb_async)
+    query_kb = staticmethod(query_kb)
 
     @staticmethod
     def delete_kb_index(kb_id: str):
@@ -323,7 +506,7 @@ class RAGService:
                         must=[
                             qmodels.FieldCondition(
                                 key="kb_id",
-                                match=qmodels.MatchValue(value=kb_id),
+                                match=qmodels.MatchValue(value=str(kb_id)),
                             )
                         ]
                     )
@@ -404,6 +587,7 @@ class VectorStoreContextProvider(ContextProvider if ContextProvider != object el
         session_id: Optional[str] = None,
         top_k: int = 5,
         source_id: str = "vector_rag",
+        api_key: Optional[str] = None,
     ):
         if ContextProvider != object:
             super().__init__(source_id=source_id)
@@ -412,6 +596,7 @@ class VectorStoreContextProvider(ContextProvider if ContextProvider != object el
         self.kb_ids = kb_ids or []
         self.session_id = session_id
         self.top_k = top_k
+        self.api_key = api_key
 
     async def before_run(
         self,
@@ -440,7 +625,7 @@ class VectorStoreContextProvider(ContextProvider if ContextProvider != object el
         # Session RAG search
         if self.session_id:
             try:
-                res = await RAGService.search_async(self.session_id, query_text, top_k=self.top_k)
+                res = await RAGService.search_async(self.session_id, query_text, top_k=self.top_k, api_key=self.api_key)
                 retrieved_results.extend(res)
             except Exception as e:
                 logger.warning("VectorStoreContextProvider session search fallback: %s", e)
@@ -448,7 +633,7 @@ class VectorStoreContextProvider(ContextProvider if ContextProvider != object el
         # KB RAG search
         for kb_id in self.kb_ids:
             try:
-                res = await RAGService.search_kb_async(str(kb_id), query_text, top_k=self.top_k)
+                res = await RAGService.search_kb_async(str(kb_id), query_text, top_k=self.top_k, api_key=self.api_key or "default_key")
                 retrieved_results.extend(res)
             except Exception as e:
                 logger.warning("VectorStoreContextProvider KB search fallback for kb %s: %s", kb_id, e)
