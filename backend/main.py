@@ -197,15 +197,56 @@ def _run_sqlite_migrations(engine):
             conn.execute(sqlalchemy.text("""
                 CREATE TABLE IF NOT EXISTS knowledge_bases (
                     id INTEGER PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    user_id INTEGER REFERENCES users(id),
+                    owner_id TEXT,
+                    app_id TEXT,
+                    external_id TEXT,
                     name TEXT NOT NULL,
                     description TEXT,
+                    scope_type TEXT DEFAULT 'workspace',
+                    embedding_provider TEXT DEFAULT 'google',
+                    embedding_model TEXT DEFAULT 'text-embedding-004',
+                    secret_id TEXT,
                     is_shared BOOLEAN DEFAULT 0,
                     is_active BOOLEAN DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP
                 )
             """))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Add missing columns to knowledge_bases if table already existed
+        for col_sql in [
+            "ALTER TABLE knowledge_bases ADD COLUMN owner_id TEXT",
+            "ALTER TABLE knowledge_bases ADD COLUMN app_id TEXT",
+            "ALTER TABLE knowledge_bases ADD COLUMN external_id TEXT",
+            "ALTER TABLE knowledge_bases ADD COLUMN scope_type TEXT DEFAULT 'workspace'",
+            "ALTER TABLE knowledge_bases ADD COLUMN embedding_provider TEXT DEFAULT 'google'",
+            "ALTER TABLE knowledge_bases ADD COLUMN embedding_model TEXT DEFAULT 'text-embedding-004'",
+            "ALTER TABLE knowledge_bases ADD COLUMN secret_id TEXT",
+        ]:
+            try:
+                conn.execute(sqlalchemy.text(col_sql))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
+        # Backfill owner_id for existing knowledge_bases if owner_id is NULL
+        try:
+            conn.execute(sqlalchemy.text(
+                "UPDATE knowledge_bases SET owner_id = CAST(user_id AS TEXT) WHERE owner_id IS NULL AND user_id IS NOT NULL"
+            ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        # Create unique constraint index on knowledge_bases if missing
+        try:
+            conn.execute(sqlalchemy.text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_kb_owner_app_ext ON knowledge_bases (owner_id, app_id, external_id)"
+            ))
             conn.commit()
         except Exception:
             conn.rollback()
@@ -218,6 +259,9 @@ def _run_sqlite_migrations(engine):
                     kb_id INTEGER NOT NULL REFERENCES knowledge_bases(id),
                     doc_type TEXT NOT NULL,
                     name TEXT NOT NULL,
+                    description TEXT,
+                    app_id TEXT,
+                    external_id TEXT,
                     content_text TEXT,
                     file_id TEXT,
                     filename TEXT,
@@ -229,6 +273,18 @@ def _run_sqlite_migrations(engine):
             conn.commit()
         except Exception:
             conn.rollback()
+
+        # Add missing columns to kb_documents if table already existed
+        for col_sql in [
+            "ALTER TABLE kb_documents ADD COLUMN description TEXT",
+            "ALTER TABLE kb_documents ADD COLUMN app_id TEXT",
+            "ALTER TABLE kb_documents ADD COLUMN external_id TEXT",
+        ]:
+            try:
+                conn.execute(sqlalchemy.text(col_sql))
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
         # Add knowledge_base_ids_json to agents if missing
         try:

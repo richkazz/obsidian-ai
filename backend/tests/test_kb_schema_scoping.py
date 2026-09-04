@@ -113,6 +113,83 @@ def test_kb_document_scoping_fields(db_session):
     assert doc.external_id == "doc_ext_1"
 
 
+def test_sqlite_kb_migration_backfills_and_alters(db_session):
+    """
+    Simulate an older SQLite database schema where knowledge_bases and kb_documents
+    lacked owner_id and other scoping columns, then run _run_sqlite_migrations
+    and verify columns exist, owner_id is backfilled, and queries succeed.
+    """
+    import sqlalchemy
+    from main import _run_sqlite_migrations
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    # Create old schema manually without owner_id and app_id/external_id
+    with engine.connect() as conn:
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL,
+                role TEXT NOT NULL,
+                hashed_password TEXT NOT NULL
+            )
+        """))
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE knowledge_bases (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id),
+                name TEXT NOT NULL,
+                description TEXT,
+                is_shared BOOLEAN DEFAULT 0,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP
+            )
+        """))
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE kb_documents (
+                id INTEGER PRIMARY KEY,
+                kb_id INTEGER NOT NULL REFERENCES knowledge_bases(id),
+                doc_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                content_text TEXT,
+                file_id TEXT,
+                filename TEXT,
+                media_type TEXT,
+                indexed BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        # Insert a user and old knowledge base row (owner_id missing)
+        conn.execute(sqlalchemy.text("INSERT INTO users (id, username, email, role, hashed_password) VALUES (1, 'alice', 'alice@example.com', 'user', 'hash')"))
+        conn.execute(sqlalchemy.text("INSERT INTO knowledge_bases (id, user_id, name, description) VALUES (10, 1, 'Old KB', 'Legacy KB')"))
+        conn.commit()
+
+    # Run migration
+    _run_sqlite_migrations(engine)
+
+    # Query using SQLAlchemy ORM model KnowledgeBase
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    kb = session.query(KnowledgeBase).filter(KnowledgeBase.id == 10).first()
+    assert kb is not None
+    assert kb.owner_id == "1"
+    assert kb.name == "Old KB"
+    assert kb.scope_type == "workspace"
+    assert kb.embedding_provider == "google"
+    assert kb.embedding_model == "text-embedding-004"
+
+    # Verify query by owner_id works seamlessly (the cause of OperationalError before fix)
+    kbs = session.query(KnowledgeBase).filter(KnowledgeBase.owner_id == "1").all()
+    assert len(kbs) == 1
+    session.close()
+
+
 @pytest.mark.asyncio
 async def test_mongo_kb_schema_fields_and_index_spec():
     """Assert KnowledgeBaseMongo document structure and index specification."""
