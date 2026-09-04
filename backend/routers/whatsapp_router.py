@@ -505,9 +505,28 @@ async def delete_voice_sample(
 async def transcribe_audio(request: Request):
     """
     Called by the Baileys sidecar to transcribe a WhatsApp voice note.
-    Returns fallback prompt indicating voice notes are currently disabled.
+    Receives multipart/form-data with field 'file', returns {"text": "..."}.
+    No user auth — sidecar is localhost-only.
+    All processing is routed via Groq Whisper API (stt_service).
+    Degrades gracefully with a friendly user prompt on timeout or corrupted audio.
     """
-    return {"text": "[Voice Note Error: Audio processing is currently disabled on backend. Please send a text message instead.]"}
+    form = await request.form()
+    upload = form.get("file")
+    if not upload:
+        raise HTTPException(400, "No file field in form data")
+
+    audio_bytes = await upload.read()
+    filename = getattr(upload, "filename", "voice.ogg") or "voice.ogg"
+    await upload.close()
+
+    try:
+        from services.stt_service import transcribe_audio as groq_transcribe
+        text = await groq_transcribe(audio_bytes, filename=filename)
+        if not text:
+            return {"text": "[Voice Note Error: Unable to transcribe audio. Please send a text message instead.]"}
+        return {"text": text}
+    except Exception as e:
+        return {"text": "[Voice Note Error: Unable to transcribe audio. Please send a text message instead.]"}
 
 
 @router.post("/incoming")

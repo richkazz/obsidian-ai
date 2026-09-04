@@ -370,34 +370,36 @@ async function startChannel(channelId, authPath) {
 
       _origStdoutWrite(`[WA-BRIDGE] text=${JSON.stringify(text)} msgKeys=${Object.keys(msg.message||{}).join(",")} waChatId=${waChatId}\n`);
 
-      // Transcribe voice notes via backend (Disabled / commented out to keep backend lighter)
+      // Transcribe voice notes via backend
       if (!text && msg.message?.audioMessage) {
+        // Mark seen immediately so a duplicate arrival on the other JID doesn't also transcribe
         seenMsgIds.add(msgId);
         if (seenMsgIds.size > 500) { const first = seenMsgIds.values().next().value; seenMsgIds.delete(first); }
-        text = "[Voice Note Received: Audio transcription is currently disabled on backend. Please send a text message instead.]";
-        // try {
-        //   const audioBuffer = await downloadMediaMessage(msg, "buffer", {});
-        //   const boundary = `----WA${Date.now()}`;
-        //   const crlf = "\r\n";
-        //   const bodyParts = [
-        //     `--${boundary}${crlf}`,
-        //     `Content-Disposition: form-data; name="file"; filename="audio.ogg"${crlf}`,
-        //     `Content-Type: audio/ogg${crlf}${crlf}`,
-        //   ];
-        //   const tail = `${crlf}--${boundary}--${crlf}`;
-        //   const head = Buffer.from(bodyParts.join(""));
-        //   const tailBuf = Buffer.from(tail);
-        //   const body = Buffer.concat([head, audioBuffer, tailBuf]);
-        //
-        //   const resp = await axios.post(
-        //     `${FASTAPI_URL}/wa/transcribe`,
-        //     body,
-        //     { headers: { "Content-Type": `multipart/form-data; boundary=${boundary}`, ...SIDECAR_HEADERS }, responseType: "json", timeout: 120000 }
-        //   );
-        //   text = resp.data?.text || null;
-        // } catch (err) {
-        //   _origStdoutWrite(`[WA-BRIDGE] audio transcription failed: ${err.message}\n`);
-        // }
+        try {
+          const audioBuffer = await downloadMediaMessage(msg, "buffer", {});
+          // POST multipart to backend /wa/transcribe
+          const boundary = `----WA${Date.now()}`;
+          const crlf = "\r\n";
+          const bodyParts = [
+            `--${boundary}${crlf}`,
+            `Content-Disposition: form-data; name="file"; filename="audio.ogg"${crlf}`,
+            `Content-Type: audio/ogg${crlf}${crlf}`,
+          ];
+          const tail = `${crlf}--${boundary}--${crlf}`;
+          const head = Buffer.from(bodyParts.join(""));
+          const tailBuf = Buffer.from(tail);
+          const body = Buffer.concat([head, audioBuffer, tailBuf]);
+
+          const resp = await axios.post(
+            `${FASTAPI_URL}/wa/transcribe`,
+            body,
+            { headers: { "Content-Type": `multipart/form-data; boundary=${boundary}`, ...SIDECAR_HEADERS }, responseType: "json", timeout: 120000 }
+          );
+          text = resp.data?.text || null;
+          _origStdoutWrite(`[WA-BRIDGE] transcribed audio: ${JSON.stringify(text)}\n`);
+        } catch (err) {
+          _origStdoutWrite(`[WA-BRIDGE] audio transcription failed: ${err.message}\n`);
+        }
       }
 
       // Don't add to seenMsgIds if no text — messages.update may deliver the decrypted content later
