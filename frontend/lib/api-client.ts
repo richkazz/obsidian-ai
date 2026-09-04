@@ -146,6 +146,11 @@ class ApiClient {
     })
   }
 
+  async listSecrets(): Promise<any[]> {
+    const result = await this.request<{ secrets: any[] }>(AppRoutes.ListSecrets())
+    return result.secrets || []
+  }
+
   async testProvider(id: string): Promise<{ success: boolean; message?: string }> {
     return this.request<{ success: boolean; message?: string }>(
       AppRoutes.TestProvider(id),

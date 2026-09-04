@@ -1,58 +1,35 @@
-# Phase 3 Completion Report — Visual Workflow DAG Migration to MAF Workflow Engine
+# Phase 3 Completion Report: Agent Retrieval Integration & Frontend UI Synchronization
 
 ## 🎯 Executive Summary
-Phase 3 replaces the custom topological DFS DAG engine (`backend/dag_executor.py`) with the native **Microsoft Agent Framework (MAF) Workflow Engine** (`WorkflowBuilder`, `Executor`, `AgentExecutor`, `FunctionExecutor`, `WorkflowContext`).
-
-The migration preserves strict architectural boundaries:
-- The workflow step configuration JSON schema stored in `workflows` and `workflow_runs` remains unchanged.
-- APScheduler background cron job execution paths in `backend/scheduler_executor.py` (`run_scheduled_workflow_sqlite()`, `run_scheduled_workflow_mongo()`) operate without regressions.
-- Frontend SSE event contracts (`node_start`, `node_content_delta`, `node_paused`, `node_complete`, `node_error`, `workflow_done`) remain 100% backward-compatible.
+Phase 3 of the Agent Execution Contract has been successfully completed. Dynamic embedding credential resolution and scoped knowledge base retrieval were fully integrated into the agent turn context pipeline (`backend/routers/chat_router.py`, `backend/services/agent_runner.py`, and `backend/rag_service.py` via `VectorStoreContextProvider`). The Next.js frontend UI (`frontend/app/(authenticated)/knowledge/page.tsx`) was updated with scope filter controls, metadata pill badges (`App: app_id`, `Ext ID: external_id`), runtime embedding secret selectors, decoupled missing secret warning badges, and an application integration drawer with `curl` snippets.
 
 ---
 
-## 🏗️ Architecture & Component Design
+## 🛠️ Summary of Changes & Architecture
 
-### 1. Dedicated MAF Executors (`backend/dag_executor.py`)
-Six dedicated subclasses of `agent_framework.Executor` were implemented:
-- **`StartNodeExecutor`**: Manages workflow entry, default inputs, and initial prompt propagation.
-- **`AgentStepExecutor`**: Resolves variable interpolation tags (`{{ nodes.<node_id>.output.<path> }}`), formats prompt context, manages retries with backoff/timeouts, and streams token deltas.
-- **`ConditionStepExecutor`**: Evaluates routing rules via LLM classification and marks unchosen branches as skipped.
-- **`ApprovalStepExecutor`**: Pauses workflow execution, creates `WorkflowApproval` records, emits `node_paused` SSE events, and waits on `workflow_hitl_events`.
-- **`MapStepExecutor`**: Fan-out parallel processing over JSON arrays using `asyncio.Semaphore` concurrency limits, respecting `continue_on_error` and reduce aggregation modes (`list` and `concat`).
-- **`EndNodeExecutor`**: Gathers upstream sink node outputs and yields final workflow output.
+### 1. Agent Scoped Retrieval & Dynamic Key Resolution
+- Updated `_build_user_llm_message` in `backend/routers/chat_router.py` to resolve dynamic embedding credentials (`resolve_embedding_credentials`) per attached Knowledge Base before querying vector stores.
+- Updated `VectorStoreContextProvider` in `backend/rag_service.py` to dynamically resolve user embedding credentials during MAF agent context preparation.
+- Ensured vector context chunks are capped at top-k limits (3–5 chunks) to prevent context window overflow.
+- Ensured Fernet secret values remain encrypted/masked at rest and during transit to the frontend.
 
-### 2. Graph Construction & Edge Wiring (`build_maf_workflow`)
-- Uses `WorkflowBuilder` to construct graph models.
-- Translates `depends_on` and condition step configurations into MAF simple edges, `add_switch_case_edge_group` (`Case`, `Default`), and `add_fan_in_edges` / `add_fan_out_edges`.
-- Performs cycle detection using graph validation (`topological_validate`), raising `WorkflowValidationError` on unhandled cycles.
-- Sets `max_iterations = MAX_WORKFLOW_SUPERSTEPS` (50) to prevent runaway infinite execution loops.
-
-### 3. State & Context Propagation
-- Inter-node message state is carried using `WorkflowStateMessage` dataclass.
-- Stores `outputs`, `condition_outputs`, `skipped`, `step_results_by_id`, `completed_nodes`, `failed_nodes`, and `user_input`.
+### 2. Frontend UI Enhancements (`frontend/app/(authenticated)/knowledge/page.tsx`)
+- Added Scope Filter tabs/buttons (`All`, `Workspace`, `Application-Specific`).
+- Added metadata pill badges for `app_id` and `external_id` on knowledge base cards.
+- Added a "Credentials Missing" warning badge whenever a KB's referenced secret is absent from the user's Secrets Vault.
+- Expanded Create Knowledge Base modal with fields for `Scope Type`, `App Scope ID (app_id)`, `External Reference ID`, `Embedding Provider`, and `Runtime Embedding Secret`.
+- Added an "Application Integration" drawer providing copyable `curl` code snippets for external upsert (`PUT /knowledge/apps/upsert`) and ingestion (`POST /knowledge/apps/ingest`).
 
 ---
 
-## 🧪 TDD & Verification Matrix
+## 🧪 Test Verification
 
-All 8 tests in `backend/tests/test_maf_workflows.py` and all 61 tests across the backend pass cleanly.
+### Backend Tests
+- Added `backend/tests/test_agent_scoped_retrieval.py`:
+  - Configures an agent with a scoped Knowledge Base attachment (`app_id="bug-tracker"`, `external_id="proj-99"`).
+  - Seeds scoped bug data using `/knowledge/apps/ingest`.
+  - Executes a chat turn and asserts vector search retrieves bug details and injects context into the prompt using resolved dynamic credentials.
+- All backend test suites (`test_agent_scoped_retrieval.py`, `test_kb_app_endpoints.py`, `test_maf_advanced.py`) pass cleanly.
 
-| Test Case | Description | Result |
-| :--- | :--- | :--- |
-| `test_graph_construction_linear_and_branching` | Validates linear and branching workflow definitions in `build_maf_workflow` | **PASSED** |
-| `test_cycle_detection_raises_validation_error` | Asserts cyclic workflow definitions raise `WorkflowValidationError` | **PASSED** |
-| `test_agent_executor_interpolation_and_execution` | Tests `AgentStepExecutor` execution and `{{ nodes.x.output.y }}` dot-path interpolation | **PASSED** |
-| `test_condition_executor_switch_case_routing` | Tests `ConditionStepExecutor` and switch-case routing along matching branch | **PASSED** |
-| `test_map_executor_fan_out_and_concurrency` | Tests `MapStepExecutor` fan-out parallel processing with concurrency semaphore | **PASSED** |
-| `test_human_in_the_loop_approval_flow` | Tests approval step pausing, `WorkflowApproval` record, `node_paused` event, and event wake | **PASSED** |
-| `test_scheduled_workflow_sqlite_execution` | Tests headless execution via APScheduler on SQLite path | **PASSED** |
-| `test_scheduled_workflow_mongo_execution` | Tests headless execution via APScheduler on MongoDB path | **PASSED** |
-
----
-
-## ✅ Acceptance Criteria Verification
-- [x] All unit and integration tests in `backend/tests/test_maf_workflows.py` pass.
-- [x] Visual workflow runs stream real-time node transitions and outputs accurately via SSE envelope events.
-- [x] Background cron workflows run via APScheduler without regressions.
-- [x] Map nodes throttle concurrency using semaphores and aggregate fan-in results.
-- [x] `PHASE_3_COMPLETION_REPORT.md` generated detailing the migration.
+### Frontend Build
+- Executed `cd frontend && npm run build`. The build succeeded with zero TypeScript or JSX compile errors.
