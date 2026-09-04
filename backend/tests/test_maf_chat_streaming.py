@@ -104,6 +104,32 @@ class MockUpdate:
         self.contents = contents
 
 
+# 0. Test LLMMessage to MAF Message conversion and fallback properties
+def test_llm_message_maf_conversion_and_properties():
+    from llm.base import LLMMessage, to_maf_messages
+    from agent_framework import Message
+
+    # Test properties
+    msg = LLMMessage(role="user", content="hello", tool_calls=["tc1"], tool_call_id="id1")
+    assert msg.contents == ["hello"]
+    assert msg.additional_properties == {"tool_calls": ["tc1"], "tool_call_id": "id1"}
+
+    # Test contents setter
+    msg.contents = ["new content"]
+    assert msg.content == "new content"
+
+    # Test conversion to MAF message
+    maf_msg = msg.to_maf_message()
+    assert isinstance(maf_msg, Message)
+    assert maf_msg.role == "user"
+    assert maf_msg.additional_properties == {"tool_calls": ["tc1"], "tool_call_id": "id1"}
+
+    # Test batch conversion
+    converted_list = to_maf_messages([msg, Message("assistant", ["hi"])])
+    assert len(converted_list) == 2
+    assert all(isinstance(m, Message) for m in converted_list)
+
+
 # 1. Streaming Output & SSE Formatting Test
 @pytest.mark.asyncio
 async def test_streaming_output_and_sse_formatting(db_session):
