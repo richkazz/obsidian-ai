@@ -23,7 +23,6 @@ from auth import (
 from file_storage import FileStorageService
 from rate_limiter import limiter
 from rag_service import RAGService
-from services.key_resolution_service import resolve_embedding_credentials
 
 if DATABASE_TYPE == "mongo":
     from database_mongo import get_database
@@ -145,6 +144,8 @@ async def upsert_app_knowledge_base(
     """
     owner_id = _get_auth_user_id(auth)
     user_id_int = int(owner_id) if str(owner_id).isdigit() else None
+
+    from services.key_resolution_service import resolve_embedding_credentials
 
     prov, api_key, model = await resolve_embedding_credentials(
         owner_id,
@@ -374,6 +375,8 @@ async def ingest_app_knowledge_document(
     embedding_provider = kb.get("embedding_provider", "google") if DATABASE_TYPE == "mongo" else kb.embedding_provider
     embedding_model = kb.get("embedding_model", "text-embedding-004") if DATABASE_TYPE == "mongo" else kb.embedding_model
 
+    from services.key_resolution_service import resolve_embedding_credentials
+
     prov, api_key, model = await resolve_embedding_credentials(
         owner_id,
         {
@@ -567,6 +570,8 @@ async def search_knowledge_base_content(
         secret_id = kb.secret_id
         provider = kb.embedding_provider or "google"
         model = kb.embedding_model or "text-embedding-004"
+
+    from services.key_resolution_service import resolve_embedding_credentials
 
     prov, api_key, model_resolved = await resolve_embedding_credentials(
         owner_id,
@@ -880,6 +885,8 @@ async def add_document(
         embedding_provider = kb.get("embedding_provider", "google")
         embedding_model = kb.get("embedding_model", "text-embedding-004")
 
+        from services.key_resolution_service import resolve_embedding_credentials
+
         prov, api_key, model = await resolve_embedding_credentials(
             str(owner_id),
             {
@@ -951,6 +958,8 @@ async def add_document(
     secret_id = kb.secret_id
     embedding_provider = kb.embedding_provider or "google"
     embedding_model = kb.embedding_model or "text-embedding-004"
+
+    from services.key_resolution_service import resolve_embedding_credentials
 
     prov, api_key, model = await resolve_embedding_credentials(
         str(owner_id),
