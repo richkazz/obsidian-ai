@@ -1055,6 +1055,52 @@ class SkillCollection:
         return result.deleted_count > 0
 
 
+class KnowledgeBaseMongo(BaseModel):
+    id: Optional[PyObjectId] = Field(default=None, alias="_id")
+    user_id: Optional[str] = None
+    owner_id: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
+    name: str
+    description: Optional[str] = None
+    scope_type: str = "workspace"
+    embedding_provider: str = "google"
+    embedding_model: str = "text-embedding-004"
+    secret_id: Optional[str] = None
+    is_shared: bool = False
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+        "json_encoders": {ObjectId: str},
+    }
+
+
+class KBDocumentMongo(BaseModel):
+    id: Optional[PyObjectId] = Field(default=None, alias="_id")
+    kb_id: str
+    doc_type: str
+    name: str
+    description: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
+    content_text: Optional[str] = None
+    file_id: Optional[str] = None
+    filename: Optional[str] = None
+    media_type: Optional[str] = None
+    indexed: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+        "json_encoders": {ObjectId: str},
+    }
+
+
 class KnowledgeBaseCollection:
     collection_name = "knowledge_bases"
 
@@ -1063,6 +1109,12 @@ class KnowledgeBaseCollection:
         collection = db[cls.collection_name]
         await collection.create_index("user_id")
         await collection.create_index("is_shared")
+        await collection.create_index(
+            [("owner_id", 1), ("app_id", 1), ("external_id", 1)],
+            unique=True,
+            sparse=True,
+            name="ux_kb_owner_app_ext",
+        )
 
     @classmethod
     async def find_accessible(cls, db, user_id: str) -> list[dict]:

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Float
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Float, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
 
@@ -244,15 +244,25 @@ class Skill(Base):
 class KnowledgeBase(Base):
     """A named collection of documents/text used for RAG."""
     __tablename__ = "knowledge_bases"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "app_id", "external_id", name="uq_kb_owner_app_ext"),
+    )
 
-    id          = Column(Integer, primary_key=True, index=True)
-    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
-    name        = Column(String, nullable=False)
-    description = Column(Text, nullable=True)
-    is_shared   = Column(Boolean, default=False)   # admin-created, visible to all users
-    is_active   = Column(Boolean, default=True)
-    created_at  = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at  = Column(DateTime(timezone=True), onupdate=func.now())
+    id                 = Column(Integer, primary_key=True, index=True)
+    user_id            = Column(Integer, ForeignKey("users.id"), nullable=True)
+    owner_id           = Column(String, nullable=True, index=True)
+    app_id             = Column(String, nullable=True, index=True)
+    external_id        = Column(String, nullable=True, index=True)
+    name               = Column(String, nullable=False)
+    description        = Column(Text, nullable=True)
+    scope_type         = Column(String, default="workspace", nullable=False)
+    embedding_provider = Column(String, default="google", nullable=False)
+    embedding_model    = Column(String, default="text-embedding-004", nullable=False)
+    secret_id          = Column(String, nullable=True)
+    is_shared          = Column(Boolean, default=False)   # admin-created, visible to all users
+    is_active          = Column(Boolean, default=True)
+    created_at         = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at         = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class KnowledgeBaseDocument(Base):
@@ -263,6 +273,9 @@ class KnowledgeBaseDocument(Base):
     kb_id        = Column(Integer, ForeignKey("knowledge_bases.id"), nullable=False)
     doc_type     = Column(String, nullable=False)    # "text" | "file"
     name         = Column(String, nullable=False)    # display name
+    description  = Column(Text, nullable=True)
+    app_id       = Column(String, nullable=True, index=True)
+    external_id  = Column(String, nullable=True, index=True)
     content_text = Column(Text, nullable=True)       # for text type
     file_id      = Column(String, nullable=True)     # filesystem path or GridFS ObjectId
     filename     = Column(String, nullable=True)
