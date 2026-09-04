@@ -27,6 +27,7 @@ export const Routes = {
   PROMPTS         : '/prompts',
   SKILLS          : '/skills',
   DEVELOPER       : '/developer',
+  DOCS            : '/docs',
 } as const;
 
 
@@ -90,6 +91,12 @@ export const ProtectedRoutes: RouteConfig[] = [
     label: 'Developer & API Platform',
     allowedRoles: ['admin', 'user'],
     description: 'Applications, API keys, schemas, and published agent contracts',
+  },
+  {
+    path: Routes.DOCS,
+    label: 'Developer Docs',
+    allowedRoles: ['admin', 'user'],
+    description: 'Comprehensive API documentation, Knowledge Base RAG integration guides, and client references',
   },
   {
     path: Routes.CHANNELS,

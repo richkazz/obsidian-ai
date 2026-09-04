@@ -13,12 +13,18 @@ from auth import create_access_token, hash_client_secret
 
 client = TestClient(app)
 
+import rag_service
 from unittest.mock import patch, AsyncMock
 
 @pytest.fixture(autouse=True)
 def mock_embedding_client():
     mock_client = AsyncMock()
     mock_client.embed = AsyncMock(return_value=[0.1] * 768)
+    qc = rag_service.get_qdrant_client()
+    try:
+        qc.delete_collection(rag_service.QDRANT_COLLECTION_NAME)
+    except Exception:
+        pass
     with patch("rag_service.get_embedding_client", return_value=mock_client) as p:
         yield p
 
