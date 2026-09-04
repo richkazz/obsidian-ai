@@ -34,6 +34,7 @@ export default function KnowledgePage() {
   const router = useRouter()
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
   const [secrets, setSecrets] = useState<any[]>([])
+  const [applications, setApplications] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [scopeFilter, setScopeFilter] = useState<"all" | "workspace" | "application">("all")
 
@@ -47,6 +48,7 @@ export default function KnowledgePage() {
   const [createDescription, setCreateDescription] = useState("")
   const [createScopeType, setCreateScopeType] = useState<"workspace" | "application">("workspace")
   const [createAppId, setCreateAppId] = useState("")
+  const [isCustomAppId, setIsCustomAppId] = useState(false)
   const [createExternalId, setCreateExternalId] = useState("")
   const [createProvider, setCreateProvider] = useState("google")
   const [createModel, setCreateModel] = useState("text-embedding-004")
@@ -73,12 +75,14 @@ export default function KnowledgePage() {
   const load = async () => {
     setIsLoading(true)
     try {
-      const [kbs, secretsList] = await Promise.all([
+      const [kbs, secretsList, appsList] = await Promise.all([
         apiClient.listKnowledgeBases(),
         apiClient.listSecrets().catch(() => []),
+        apiClient.listApplications().catch(() => []),
       ])
       setKnowledgeBases(kbs)
       setSecrets(secretsList)
+      setApplications(appsList)
     } catch {
       toast.error("Failed to load knowledge bases")
     } finally {
@@ -118,6 +122,7 @@ export default function KnowledgePage() {
     setCreateDescription("")
     setCreateScopeType("workspace")
     setCreateAppId("")
+    setIsCustomAppId(false)
     setCreateExternalId("")
     setCreateProvider("google")
     setCreateModel("text-embedding-004")
@@ -378,12 +383,38 @@ export default function KnowledgePage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-2">
                 <Label htmlFor="kb-app-id">App Scope ID (app_id)</Label>
-                <Input
+                <select
                   id="kb-app-id"
-                  value={createAppId}
-                  onChange={(e) => setCreateAppId(e.target.value)}
-                  placeholder="e.g. bug-tracker"
-                />
+                  value={isCustomAppId ? "__custom__" : createAppId}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    if (val === "__custom__") {
+                      setIsCustomAppId(true)
+                      setCreateAppId("")
+                    } else {
+                      setIsCustomAppId(false)
+                      setCreateAppId(val)
+                    }
+                  }}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="">-- None / Select App --</option>
+                  {applications.map((app) => (
+                    <option key={app.id} value={app.id}>
+                      {app.name} (ID: {app.id})
+                    </option>
+                  ))}
+                  <option value="__custom__">+ Custom App Scope ID...</option>
+                </select>
+                {isCustomAppId && (
+                  <Input
+                    id="kb-custom-app-id"
+                    value={createAppId}
+                    onChange={(e) => setCreateAppId(e.target.value)}
+                    placeholder="e.g. bug-tracker"
+                    className="mt-1"
+                  />
+                )}
               </div>
 
               <div className="grid gap-2">

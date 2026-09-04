@@ -875,12 +875,30 @@ async def add_document(
         else:
             raise HTTPException(status_code=400, detail="doc_type must be 'text' or 'file'")
 
+        owner_id = kb.get("owner_id") or kb.get("user_id") or current_user.user_id
+        secret_id = kb.get("secret_id")
+        embedding_provider = kb.get("embedding_provider", "google")
+        embedding_model = kb.get("embedding_model", "text-embedding-004")
+
+        prov, api_key, model = await resolve_embedding_credentials(
+            str(owner_id),
+            {
+                "secret_id": secret_id,
+                "embedding_provider": embedding_provider,
+                "embedding_model": embedding_model,
+            },
+            db=db,
+        )
+
         indexed = False
         if text_to_index.strip():
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None, RAGService.index_kb_document, kb_id, text_to_index,
-                {"doc_name": data.name, "filename": data.filename},
+            await RAGService.index_kb_document_async(
+                kb_id=kb_id,
+                text=text_to_index,
+                metadata={"doc_name": data.name, "filename": data.filename},
+                embedding_provider=prov,
+                api_key=api_key,
+                model=model,
             )
             indexed = True
 
@@ -929,12 +947,30 @@ async def add_document(
     else:
         raise HTTPException(status_code=400, detail="doc_type must be 'text' or 'file'")
 
+    owner_id = kb.owner_id or (str(kb.user_id) if kb.user_id is not None else None) or current_user.user_id
+    secret_id = kb.secret_id
+    embedding_provider = kb.embedding_provider or "google"
+    embedding_model = kb.embedding_model or "text-embedding-004"
+
+    prov, api_key, model = await resolve_embedding_credentials(
+        str(owner_id),
+        {
+            "secret_id": secret_id,
+            "embedding_provider": embedding_provider,
+            "embedding_model": embedding_model,
+        },
+        db=db,
+    )
+
     indexed = False
     if text_to_index.strip():
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            None, RAGService.index_kb_document, kb_id, text_to_index,
-            {"doc_name": data.name, "filename": data.filename},
+        await RAGService.index_kb_document_async(
+            kb_id=kb_id,
+            text=text_to_index,
+            metadata={"doc_name": data.name, "filename": data.filename},
+            embedding_provider=prov,
+            api_key=api_key,
+            model=model,
         )
         indexed = True
 

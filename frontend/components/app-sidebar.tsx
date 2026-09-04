@@ -23,6 +23,7 @@ import {
   Moon,
   Sun,
   Code2,
+  FileText,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -57,6 +58,7 @@ const toolItems: NavItem[] = [
   { label: "Observability",icon: BarChart2,     path: Routes.OBSERVABILITY },
   { label: "Channels",     icon: MessageCircle, path: Routes.CHANNELS },
   { label: "Developer",    icon: Code2,         path: Routes.DEVELOPER },
+  { label: "Docs",         icon: FileText,      path: Routes.DOCS },
 ]
 
 const systemItems: NavItem[] = [
