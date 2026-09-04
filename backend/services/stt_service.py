@@ -27,7 +27,8 @@ async def transcribe_audio(
     prompt: Optional[str] = None,
 ) -> Optional[str]:
     """
-    Transcribe audio bytes using Groq Whisper API.
+    Transcribe audio bytes using Groq Whisper API (`whisper-large-v3-turbo`).
+    Lightweight cloud API call — requires no local ML model or heavy libraries.
 
     Args:
         audio_bytes: Raw binary audio content.

@@ -117,14 +117,16 @@ async def send_audio(channel_id: int | str, wa_chat_id: str, ogg_bytes: bytes) -
 
 
 def _should_send_voice(channel: dict, wa_sender: str) -> bool:
-    if not channel.get("voice_reply_enabled"):
-        return False
-    jids = channel.get("voice_reply_jids") or []
-    if not jids:
-        return True
-    sender_num = wa_sender.split("@")[0]
-    allowed_nums = {j.split("@")[0] for j in jids}
-    return sender_num in allowed_nums
+    # Audio/voice replies currently commented out / disabled to keep backend lighter
+    return False
+    # if not channel.get("voice_reply_enabled"):
+    #     return False
+    # jids = channel.get("voice_reply_jids") or []
+    # if not jids:
+    #     return True
+    # sender_num = wa_sender.split("@")[0]
+    # allowed_nums = {j.split("@")[0] for j in jids}
+    # return sender_num in allowed_nums
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
@@ -438,28 +440,29 @@ async def _deliver_reply(
             "role": "assistant",
             "content": reply,
         })
-        if _should_send_voice(channel, reply_chat_id):
-            try:
-                from services.tts_service import synthesize
-                ogg = await synthesize(
-                    reply,
-                    voice=channel.get("voice_reply_voice") or "Ryan",
-                    backend=channel.get("tts_backend") or "auto",
-                    ref_audio=channel.get("voice_clone_audio_path") or None,
-                    ref_text=channel.get("voice_clone_ref_text") or None,
-                )
-                await send_audio(channel_id, reply_chat_id, ogg)
-            except Exception as e:
-                logger.warning("TTS failed, falling back to text: %s", e)
-                if reply_quote_id:
-                    await send_quoted_message(channel_id, reply_chat_id, reply, reply_quote_id)
-                else:
-                    await send_message(channel_id, reply_chat_id, reply)
+        # Audio feature commented out for lightweight backend mode
+        # if _should_send_voice(channel, reply_chat_id):
+        #     try:
+        #         from services.tts_service import synthesize
+        #         ogg = await synthesize(
+        #             reply,
+        #             voice=channel.get("voice_reply_voice") or "Ryan",
+        #             backend=channel.get("tts_backend") or "auto",
+        #             ref_audio=channel.get("voice_clone_audio_path") or None,
+        #             ref_text=channel.get("voice_clone_ref_text") or None,
+        #         )
+        #         await send_audio(channel_id, reply_chat_id, ogg)
+        #     except Exception as e:
+        #         logger.warning("TTS failed, falling back to text: %s", e)
+        #         if reply_quote_id:
+        #             await send_quoted_message(channel_id, reply_chat_id, reply, reply_quote_id)
+        #         else:
+        #             await send_message(channel_id, reply_chat_id, reply)
+        # else:
+        if reply_quote_id:
+            await send_quoted_message(channel_id, reply_chat_id, reply, reply_quote_id)
         else:
-            if reply_quote_id:
-                await send_quoted_message(channel_id, reply_chat_id, reply, reply_quote_id)
-            else:
-                await send_message(channel_id, reply_chat_id, reply)
+            await send_message(channel_id, reply_chat_id, reply)
 
 
 # ── SQLite (legacy) ────────────────────────────────────────────────────────────
@@ -549,13 +552,14 @@ async def _handle_sqlite(payload: dict, db) -> None:
             "voice_clone_audio_path": getattr(channel, "voice_clone_audio_path", None),
             "voice_clone_ref_text": getattr(channel, "voice_clone_ref_text", None),
         }
-        if _should_send_voice(channel_dict, wa_chat_id):
-            try:
-                from services.tts_service import synthesize
-                ogg = await synthesize(reply, voice=channel_dict["voice_reply_voice"], backend=channel_dict["tts_backend"], ref_audio=channel_dict["voice_clone_audio_path"] or None, ref_text=channel_dict["voice_clone_ref_text"] or None)
-                await send_audio(channel_id, wa_chat_id, ogg)
-            except Exception as e:
-                logger.warning("TTS failed, falling back to text: %s", e)
-                await send_message(channel_id, wa_chat_id, reply, should_quote=should_quote)
-        else:
-            await send_message(channel_id, wa_chat_id, reply, should_quote=should_quote)
+        # Audio feature commented out for lightweight backend mode
+        # if _should_send_voice(channel_dict, wa_chat_id):
+        #     try:
+        #         from services.tts_service import synthesize
+        #         ogg = await synthesize(reply, voice=channel_dict["voice_reply_voice"], backend=channel_dict["tts_backend"], ref_audio=channel_dict["voice_clone_audio_path"] or None, ref_text=channel_dict["voice_clone_ref_text"] or None)
+        #         await send_audio(channel_id, wa_chat_id, ogg)
+        #     except Exception as e:
+        #         logger.warning("TTS failed, falling back to text: %s", e)
+        #         await send_message(channel_id, wa_chat_id, reply, should_quote=should_quote)
+        # else:
+        await send_message(channel_id, wa_chat_id, reply, should_quote=should_quote)
