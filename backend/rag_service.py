@@ -304,19 +304,31 @@ async def query_kb_async(
         query_vector = await client.embed(query)
         qdrant_client = get_qdrant_client()
 
-        search_result = qdrant_client.search(
-            collection_name=QDRANT_COLLECTION_NAME,
-            query_vector=query_vector,
-            query_filter=qmodels.Filter(
-                must=[
-                    qmodels.FieldCondition(
-                        key="kb_id",
-                        match=qmodels.MatchValue(value=str(kb_id)),
-                    )
-                ]
-            ),
-            limit=top_k,
+        kb_filter = qmodels.Filter(
+            must=[
+                qmodels.FieldCondition(
+                    key="kb_id",
+                    match=qmodels.MatchValue(value=str(kb_id)),
+                )
+            ]
         )
+        if hasattr(qdrant_client, "query_points"):
+            query_res = qdrant_client.query_points(
+                collection_name=QDRANT_COLLECTION_NAME,
+                query=query_vector,
+                query_filter=kb_filter,
+                limit=top_k,
+            )
+            search_result = query_res.points
+        elif hasattr(qdrant_client, "search"):
+            search_result = qdrant_client.search(
+                collection_name=QDRANT_COLLECTION_NAME,
+                query_vector=query_vector,
+                query_filter=kb_filter,
+                limit=top_k,
+            )
+        else:
+            search_result = []
 
         results = []
         for hit in search_result:
@@ -514,6 +526,36 @@ class RAGService:
             )
         except Exception as e:
             logger.warning("Failed to delete Qdrant points for kb %s: %s", kb_id, e)
+
+    @staticmethod
+    async def delete_document_vectors_async(kb_id: str, external_id: str):
+        """Delete points associated with a specific document external_id in a knowledge base."""
+        client = get_qdrant_client()
+        try:
+            client.delete(
+                collection_name=QDRANT_COLLECTION_NAME,
+                points_selector=qmodels.FilterSelector(
+                    filter=qmodels.Filter(
+                        must=[
+                            qmodels.FieldCondition(
+                                key="kb_id",
+                                match=qmodels.MatchValue(value=str(kb_id)),
+                            ),
+                            qmodels.FieldCondition(
+                                key="external_id",
+                                match=qmodels.MatchValue(value=str(external_id)),
+                            ),
+                        ]
+                    )
+                )
+            )
+        except Exception as e:
+            logger.warning("Failed to delete Qdrant points for doc %s in kb %s: %s", external_id, kb_id, e)
+
+    @staticmethod
+    def delete_document_vectors(kb_id: str, external_id: str):
+        """Synchronous wrapper for delete_document_vectors_async."""
+        _run_coroutine_sync(RAGService.delete_document_vectors_async(kb_id, external_id))
 
     # -- Extract text helpers -------------------------------------------------
 
