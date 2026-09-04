@@ -38,6 +38,7 @@ class Token(BaseModel):
 class APIClientData(BaseModel):
     client_id       : str
     client_name     : str
+    user_id         : Optional[str] = None
     token_type      : str = "api_client"
 
 
@@ -171,9 +172,11 @@ async def get_api_client(
             detail="Invalid API credentials",
         )
 
+    created_by_val = str(client.get("created_by")) if DATABASE_TYPE == "mongo" else str(client.created_by)
     return APIClientData(
         client_id=client_id,
         client_name=client_name,
+        user_id=created_by_val,
         token_type="api_client",
     )
 

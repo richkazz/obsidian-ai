@@ -663,17 +663,38 @@ class AdminUserUpdate(BaseModel):
 class KnowledgeBaseCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    owner_id: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
+    scope_type: str = "workspace"
+    embedding_provider: str = "google"
+    embedding_model: str = "text-embedding-004"
+    secret_id: Optional[str] = None
     is_shared: bool = False
 
 class KnowledgeBaseUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    owner_id: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
+    scope_type: Optional[str] = None
+    embedding_provider: Optional[str] = None
+    embedding_model: Optional[str] = None
+    secret_id: Optional[str] = None
     is_shared: Optional[bool] = None
 
 class KnowledgeBaseResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
+    owner_id: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
+    scope_type: str = "workspace"
+    embedding_provider: str = "google"
+    embedding_model: str = "text-embedding-004"
+    secret_id: Optional[str] = None
     is_shared: bool
     is_active: bool
     document_count: int = 0
@@ -688,6 +709,9 @@ class KnowledgeBaseListResponse(BaseModel):
 class KBDocumentCreate(BaseModel):
     doc_type: str                          # "text" | "file"
     name: str
+    description: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
     content_text: Optional[str] = None    # for text type
     file_data: Optional[str] = None       # base64 data URI for file type
     filename: Optional[str] = None
@@ -698,6 +722,9 @@ class KBDocumentResponse(BaseModel):
     kb_id: str
     doc_type: str
     name: str
+    description: Optional[str] = None
+    app_id: Optional[str] = None
+    external_id: Optional[str] = None
     filename: Optional[str] = None
     media_type: Optional[str] = None
     indexed: bool
@@ -708,6 +735,73 @@ class KBDocumentResponse(BaseModel):
 
 class KBDocumentListResponse(BaseModel):
     documents: list[KBDocumentResponse]
+
+
+class KnowledgeBaseAppUpsertRequest(BaseModel):
+    app_id: str
+    external_id: str
+    name: str
+    description: str
+    tags: Optional[list[str]] = None
+    embedding_provider: Optional[str] = "google"
+    secret_id: Optional[str] = None
+
+
+class KnowledgeBaseAppUpsertResponse(BaseModel):
+    kb_id: str
+    app_id: str
+    external_id: str
+    name: str
+    description: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KnowledgeAppIngestRequest(BaseModel):
+    app_id: str
+    external_id: str
+    doc_type: str
+    title: str
+    content: str
+    metadata: Optional[dict] = None
+    document_external_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_content_not_empty(self):
+        if not self.content or not self.content.strip():
+            raise ValueError("content must not be empty or whitespace only")
+        return self
+
+
+class KnowledgeAppIngestResponse(BaseModel):
+    doc_id: str
+    kb_id: str
+    app_id: str
+    external_id: str
+    doc_type: str
+    title: str
+    indexed: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KBSearchRequest(BaseModel):
+    query: str
+    top_k: int = 5
+
+
+class KBSearchResultItem(BaseModel):
+    text: str
+    score: float
+    metadata: Optional[dict] = None
+
+
+class KBSearchResponse(BaseModel):
+    results: list[KBSearchResultItem]
 
 
 # ============================================================================

@@ -14,6 +14,9 @@ GOOGLE_TTS_API_KEY = os.getenv("GOOGLE_TTS_API_KEY", "")
 GOOGLE_TTS_LANGUAGE_CODE = os.getenv("GOOGLE_TTS_LANGUAGE_CODE", "en-US")
 GOOGLE_TTS_VOICE_NAME = os.getenv("GOOGLE_TTS_VOICE_NAME", "en-US-Journey-F")
 
+# Storage Config
+DATA_DIR = os.getenv("DATA_DIR", "data")
+
 # Vector Store / RAG Config (Google Vertex Embeddings + Qdrant Cloud)
 QDRANT_URL = os.getenv("QDRANT_URL", "")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
