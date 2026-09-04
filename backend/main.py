@@ -1130,12 +1130,14 @@ async def lifespan(app: FastAPI):
         await close_mongo_connection()
 
 
-# Enable OpenTelemetry instrumentation for MAF agent framework
-try:
-    from agent_framework.observability import enable_instrumentation
-    enable_instrumentation()
-except Exception:
-    pass
+# Enable OpenTelemetry instrumentation for MAF agent framework if explicitly configured
+import os
+if os.getenv("ENABLE_OTEL_INSTRUMENTATION", "false").lower() in ("true", "1", "yes"):
+    try:
+        from agent_framework.observability import enable_instrumentation
+        enable_instrumentation()
+    except Exception:
+        pass
 
 app = FastAPI(title="Obsidian AI", lifespan=lifespan)
 
