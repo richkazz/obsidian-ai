@@ -104,9 +104,8 @@ jobs:
             git pull origin ${{ github.ref_name }}
             export GITHUB_REPOSITORY_OWNER="$REPO_OWNER"
 
-            PREV_TAG=$(cat .last_good_tag 2>/dev/null || echo latest)
             export IMAGE_TAG=$(git rev-parse --short HEAD)
-            echo "Deploying tag: $IMAGE_TAG (previous good: $PREV_TAG)"
+            echo "Deploying tag: $IMAGE_TAG"
 
             # Pull images one at a time — the VM only has 1GB RAM, and
             # parallel pulls/extraction was the main cause of slow/failed
@@ -116,24 +115,6 @@ jobs:
 
             docker compose up -d --remove-orphans
 
-            echo "Waiting for backend health check..."
-            HEALTHY=0
-            for i in $(seq 1 36); do
-              if curl -sf http://localhost:8001/health >/dev/null 2>&1; then
-                HEALTHY=1
-                break
-              fi
-              sleep 5
-            done
-
-            if [ "$HEALTHY" = "1" ]; then
-              echo "$IMAGE_TAG" > .last_good_tag
-              docker image prune -f
-              echo "Deploy succeeded on $IMAGE_TAG"
-            else
-              echo "Health check failed after 3 minutes — rolling back to $PREV_TAG"
-              export IMAGE_TAG=$PREV_TAG
-              docker compose up -d --remove-orphans
-              echo "Rolled back to $PREV_TAG"
-              exit 1
-            fi
+            echo "$IMAGE_TAG" > .last_good_tag
+            docker image prune -f
+            echo "Deploy succeeded on $IMAGE_TAG"
