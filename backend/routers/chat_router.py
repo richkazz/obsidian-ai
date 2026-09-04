@@ -1706,7 +1706,7 @@ async def _build_user_llm_message(
                         kb_config = {
                             "secret_id": _kb_obj.get("secret_id"),
                             "embedding_provider": _kb_obj.get("embedding_provider", "google"),
-                            "embedding_model": _kb_obj.get("embedding_model", "text-embedding-004"),
+                            "embedding_model": _kb_obj.get("embedding_model", "gemini-embedding-2"),
                         }
                 else:
                     if db:
@@ -1715,7 +1715,7 @@ async def _build_user_llm_message(
                             kb_config = {
                                 "secret_id": _kb_obj.secret_id,
                                 "embedding_provider": _kb_obj.embedding_provider or "google",
-                                "embedding_model": _kb_obj.embedding_model or "text-embedding-004",
+                                "embedding_model": _kb_obj.embedding_model or "gemini-embedding-2",
                             }
 
             from services.key_resolution_service import resolve_embedding_credentials

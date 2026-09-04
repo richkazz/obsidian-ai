@@ -37,7 +37,7 @@ services:
       - QDRANT_URL=${QDRANT_URL:-}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-obsidian_rag}
-      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-text-embedding-004}
+      - GOOGLE_EMBEDDING_MODEL=${GOOGLE_EMBEDDING_MODEL:-gemini-embedding-2}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
     volumes:
       - backend_data:/app/data

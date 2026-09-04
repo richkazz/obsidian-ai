@@ -668,7 +668,7 @@ class KnowledgeBaseCreate(BaseModel):
     external_id: Optional[str] = None
     scope_type: str = "workspace"
     embedding_provider: str = "google"
-    embedding_model: str = "text-embedding-004"
+    embedding_model: str = "gemini-embedding-2"
     secret_id: Optional[str] = None
     is_shared: bool = False
 
@@ -693,7 +693,7 @@ class KnowledgeBaseResponse(BaseModel):
     external_id: Optional[str] = None
     scope_type: str = "workspace"
     embedding_provider: str = "google"
-    embedding_model: str = "text-embedding-004"
+    embedding_model: str = "gemini-embedding-2"
     secret_id: Optional[str] = None
     is_shared: bool
     is_active: bool

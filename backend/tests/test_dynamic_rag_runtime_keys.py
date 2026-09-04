@@ -60,13 +60,13 @@ async def test_dynamic_embedding_credentials_per_call(monkeypatch):
             top_k=3,
             embedding_provider="google",
             api_key="AIzaRuntimeGoogleKey456",
-            model="text-embedding-004",
+            model="gemini-embedding-2",
         )
 
         mock_get_client.assert_called_with(
             provider="google",
             api_key="AIzaRuntimeGoogleKey456",
-            model="text-embedding-004",
+            model="gemini-embedding-2",
         )
         assert isinstance(results, list)
 

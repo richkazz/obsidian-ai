@@ -56,7 +56,7 @@ def _kb_to_response(kb, doc_count: int = 0, is_mongo: bool = False) -> Knowledge
             external_id=kb.get("external_id"),
             scope_type=kb.get("scope_type", "workspace"),
             embedding_provider=kb.get("embedding_provider", "google"),
-            embedding_model=kb.get("embedding_model", "text-embedding-004"),
+            embedding_model=kb.get("embedding_model", "gemini-embedding-2"),
             secret_id=kb.get("secret_id"),
             is_shared=kb.get("is_shared", False),
             is_active=kb.get("is_active", True),
@@ -72,7 +72,7 @@ def _kb_to_response(kb, doc_count: int = 0, is_mongo: bool = False) -> Knowledge
         external_id=kb.external_id,
         scope_type=kb.scope_type or "workspace",
         embedding_provider=kb.embedding_provider or "google",
-        embedding_model=kb.embedding_model or "text-embedding-004",
+        embedding_model=kb.embedding_model or "gemini-embedding-2",
         secret_id=kb.secret_id,
         is_shared=kb.is_shared,
         is_active=kb.is_active,
@@ -373,7 +373,7 @@ async def ingest_app_knowledge_document(
     kb_id = str(kb["_id"]) if DATABASE_TYPE == "mongo" else str(kb.id)
     secret_id = kb.get("secret_id") if DATABASE_TYPE == "mongo" else kb.secret_id
     embedding_provider = kb.get("embedding_provider", "google") if DATABASE_TYPE == "mongo" else kb.embedding_provider
-    embedding_model = kb.get("embedding_model", "text-embedding-004") if DATABASE_TYPE == "mongo" else kb.embedding_model
+    embedding_model = kb.get("embedding_model", "gemini-embedding-2") if DATABASE_TYPE == "mongo" else kb.embedding_model
 
     from services.key_resolution_service import resolve_embedding_credentials
 
@@ -557,7 +557,7 @@ async def search_knowledge_base_content(
             raise HTTPException(status_code=404, detail="Knowledge base not found")
         secret_id = kb.get("secret_id")
         provider = kb.get("embedding_provider", "google")
-        model = kb.get("embedding_model", "text-embedding-004")
+        model = kb.get("embedding_model", "gemini-embedding-2")
     else:
         kb = db.query(KnowledgeBase).filter(
             KnowledgeBase.id == int(kb_id) if kb_id.isdigit() else KnowledgeBase.id == kb_id,
@@ -569,7 +569,7 @@ async def search_knowledge_base_content(
             raise HTTPException(status_code=404, detail="Knowledge base not found")
         secret_id = kb.secret_id
         provider = kb.embedding_provider or "google"
-        model = kb.embedding_model or "text-embedding-004"
+        model = kb.embedding_model or "gemini-embedding-2"
 
     from services.key_resolution_service import resolve_embedding_credentials
 
@@ -883,7 +883,7 @@ async def add_document(
         owner_id = kb.get("owner_id") or kb.get("user_id") or current_user.user_id
         secret_id = kb.get("secret_id")
         embedding_provider = kb.get("embedding_provider", "google")
-        embedding_model = kb.get("embedding_model", "text-embedding-004")
+        embedding_model = kb.get("embedding_model", "gemini-embedding-2")
 
         from services.key_resolution_service import resolve_embedding_credentials
 
@@ -957,7 +957,7 @@ async def add_document(
     owner_id = kb.owner_id or (str(kb.user_id) if kb.user_id is not None else None) or current_user.user_id
     secret_id = kb.secret_id
     embedding_provider = kb.embedding_provider or "google"
-    embedding_model = kb.embedding_model or "text-embedding-004"
+    embedding_model = kb.embedding_model or "gemini-embedding-2"
 
     from services.key_resolution_service import resolve_embedding_credentials
 

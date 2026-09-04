@@ -116,7 +116,7 @@ class BaseEmbeddingClient:
 class GoogleEmbeddingClient(BaseEmbeddingClient):
     def __init__(self, api_key: str, model: Optional[str] = None):
         self.api_key = api_key
-        self.model = model or "text-embedding-004"
+        self.model = model or "gemini-embedding-2"
 
     async def embed(self, text: str) -> List[float]:
         if not self.api_key or self.api_key == "dummy_embedding_key":
@@ -713,7 +713,7 @@ class VectorStoreContextProvider(ContextProvider if ContextProvider != object el
                                 kb_config = {
                                     "secret_id": _kb_obj.get("secret_id"),
                                     "embedding_provider": _kb_obj.get("embedding_provider", "google"),
-                                    "embedding_model": _kb_obj.get("embedding_model", "text-embedding-004"),
+                                    "embedding_model": _kb_obj.get("embedding_model", "gemini-embedding-2"),
                                 }
                         except Exception:
                             pass

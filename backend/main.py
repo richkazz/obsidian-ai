@@ -205,7 +205,7 @@ def _run_sqlite_migrations(engine):
                     description TEXT,
                     scope_type TEXT DEFAULT 'workspace',
                     embedding_provider TEXT DEFAULT 'google',
-                    embedding_model TEXT DEFAULT 'text-embedding-004',
+                    embedding_model TEXT DEFAULT 'gemini-embedding-2',
                     secret_id TEXT,
                     is_shared BOOLEAN DEFAULT 0,
                     is_active BOOLEAN DEFAULT 1,
@@ -224,7 +224,7 @@ def _run_sqlite_migrations(engine):
             "ALTER TABLE knowledge_bases ADD COLUMN external_id TEXT",
             "ALTER TABLE knowledge_bases ADD COLUMN scope_type TEXT DEFAULT 'workspace'",
             "ALTER TABLE knowledge_bases ADD COLUMN embedding_provider TEXT DEFAULT 'google'",
-            "ALTER TABLE knowledge_bases ADD COLUMN embedding_model TEXT DEFAULT 'text-embedding-004'",
+            "ALTER TABLE knowledge_bases ADD COLUMN embedding_model TEXT DEFAULT 'gemini-embedding-2'",
             "ALTER TABLE knowledge_bases ADD COLUMN secret_id TEXT",
         ]:
             try:

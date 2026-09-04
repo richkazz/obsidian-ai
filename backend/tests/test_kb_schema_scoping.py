@@ -45,7 +45,7 @@ def test_kb_schema_scoping_creation_and_uniqueness(db_session):
         external_id="proj_42",
         scope_type="workspace",
         embedding_provider="google",
-        embedding_model="text-embedding-004",
+        embedding_model="gemini-embedding-2",
     )
     db_session.add(kb1)
     db_session.commit()
@@ -182,7 +182,7 @@ def test_sqlite_kb_migration_backfills_and_alters(db_session):
     assert kb.name == "Old KB"
     assert kb.scope_type == "workspace"
     assert kb.embedding_provider == "google"
-    assert kb.embedding_model == "text-embedding-004"
+    assert kb.embedding_model == "gemini-embedding-2"
 
     # Verify query by owner_id works seamlessly (the cause of OperationalError before fix)
     kbs = session.query(KnowledgeBase).filter(KnowledgeBase.owner_id == "1").all()
@@ -201,7 +201,7 @@ async def test_mongo_kb_schema_fields_and_index_spec():
         "description": "Scoped KB",
         "scope_type": "workspace",
         "embedding_provider": "google",
-        "embedding_model": "text-embedding-004",
+        "embedding_model": "gemini-embedding-2",
         "secret_id": "sec_123",
     }
     mongo_model = KnowledgeBaseMongo(**kb_data)

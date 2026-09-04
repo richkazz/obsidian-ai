@@ -52,7 +52,7 @@ export default function KnowledgePage() {
   const [isCustomAppId, setIsCustomAppId] = useState(false)
   const [createExternalId, setCreateExternalId] = useState("")
   const [createProvider, setCreateProvider] = useState("google")
-  const [createModel, setCreateModel] = useState("text-embedding-004")
+  const [createModel, setCreateModel] = useState("gemini-embedding-2")
   const [createSecretId, setCreateSecretId] = useState("")
   const [createShared, setCreateShared] = useState(false)
   const [createLoading, setCreateLoading] = useState(false)
@@ -126,7 +126,7 @@ export default function KnowledgePage() {
     setIsCustomAppId(false)
     setCreateExternalId("")
     setCreateProvider("google")
-    setCreateModel("text-embedding-004")
+    setCreateModel("gemini-embedding-2")
     setCreateSecretId("")
     setCreateShared(false)
   }
@@ -370,7 +370,7 @@ export default function KnowledgePage() {
                   onChange={(e) => {
                     const p = e.target.value
                     setCreateProvider(p)
-                    if (p === "google") setCreateModel("text-embedding-004")
+                    if (p === "google") setCreateModel("gemini-embedding-2")
                     else if (p === "openai") setCreateModel("text-embedding-3-small")
                   }}
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"

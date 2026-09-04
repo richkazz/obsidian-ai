@@ -257,7 +257,7 @@ class KnowledgeBase(Base):
     description        = Column(Text, nullable=True)
     scope_type         = Column(String, default="workspace", nullable=False)
     embedding_provider = Column(String, default="google", nullable=False)
-    embedding_model    = Column(String, default="text-embedding-004", nullable=False)
+    embedding_model    = Column(String, default="gemini-embedding-2", nullable=False)
     secret_id          = Column(String, nullable=True)
     is_shared          = Column(Boolean, default=False)   # admin-created, visible to all users
     is_active          = Column(Boolean, default=True)

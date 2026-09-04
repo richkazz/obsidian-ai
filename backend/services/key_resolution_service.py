@@ -30,7 +30,7 @@ async def resolve_embedding_credentials(
       Tuple of (embedding_provider, decrypted_api_key, embedding_model).
     """
     provider = kb_config.get("embedding_provider") or "google"
-    model = kb_config.get("embedding_model") or "text-embedding-004"
+    model = kb_config.get("embedding_model") or "gemini-embedding-2"
     secret_id = kb_config.get("secret_id")
 
     api_key = None
