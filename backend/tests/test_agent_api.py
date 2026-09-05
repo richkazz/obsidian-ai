@@ -263,7 +263,7 @@ def test_api_config_rejects_schema_owned_by_another_user(setup_data):
 
     db = next(get_db())
     try:
-        other_user = User(username="other", email="other@example.com", hashed_password="pw")
+        other_user = User(username="other", email="other@example.com", hashed_password="pw", role="user")
         db.add(other_user)
         db.flush()
         other_schema = Schema(user_id=other_user.id, name="Other input", direction="input")
