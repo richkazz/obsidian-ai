@@ -391,12 +391,22 @@ def is_sandbox_tool(tool_name: str) -> bool:
     return tool_name.startswith("sandbox_")
 
 
-async def execute_sandbox_tool(tool_name: str, arguments_str: str, container_id: str) -> str:
-    """Dispatch a sandbox_* tool call to the container via MAF FunctionTool."""
+async def execute_sandbox_tool(tool_name: str, arguments_str: str, container_id: str, trace_context: Any = None) -> str:
+    """Dispatch a sandbox_* tool call to the container via MAF FunctionTool with trace span support."""
+    span = None
+    if trace_context:
+        span = trace_context.create_span(
+            name=tool_name,
+            span_type="sandbox_call",
+            attributes={"container_id": container_id, "arguments": arguments_str[:2000]},
+        )
     tools = create_sandbox_tools(container_id)
     tool_obj = tools.get(tool_name)
     if not tool_obj:
-        return json.dumps({"error": f"Unknown sandbox tool: {tool_name}"})
+        res_str = json.dumps({"error": f"Unknown sandbox tool: {tool_name}"})
+        if span:
+            span.finish(status="error", error=res_str)
+        return res_str
 
     try:
         args = json.loads(arguments_str) if arguments_str else {}
@@ -405,5 +415,12 @@ async def execute_sandbox_tool(tool_name: str, arguments_str: str, container_id:
 
     res = await tool_obj.invoke(arguments=args)
     if isinstance(res, list) and len(res) > 0 and hasattr(res[0], "text"):
-        return res[0].text
-    return str(res)
+        out_str = res[0].text
+    else:
+        out_str = str(res)
+
+    if span:
+        span.finish(status="success")
+        from tracing_service import get_trace_provider
+        await get_trace_provider().export_span(span)
+    return out_str

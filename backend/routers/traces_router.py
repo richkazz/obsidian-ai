@@ -18,6 +18,9 @@ def _span_to_response(span, is_mongo: bool = False) -> TraceSpanResponse:
     if is_mongo:
         return TraceSpanResponse(
             id=str(span["_id"]),
+            trace_id=span.get("trace_id"),
+            span_id=span.get("span_id"),
+            parent_span_id=span.get("parent_span_id"),
             session_id=span.get("session_id"),
             workflow_run_id=span.get("workflow_run_id"),
             message_id=span.get("message_id"),
@@ -39,6 +42,9 @@ def _span_to_response(span, is_mongo: bool = False) -> TraceSpanResponse:
         )
     return TraceSpanResponse(
         id=str(span.id),
+        trace_id=getattr(span, "trace_id", None),
+        span_id=getattr(span, "span_id", None),
+        parent_span_id=getattr(span, "parent_span_id", None),
         session_id=str(span.session_id) if span.session_id is not None else None,
         workflow_run_id=str(span.workflow_run_id) if span.workflow_run_id is not None else None,
         message_id=str(span.message_id) if span.message_id is not None else None,
@@ -58,6 +64,28 @@ def _span_to_response(span, is_mongo: bool = False) -> TraceSpanResponse:
         round_number=span.round_number or 0,
         created_at=span.created_at,
     )
+
+
+@router.get("/{trace_id}", response_model=list[TraceSpanResponse])
+async def get_trace_by_id(
+    trace_id: str,
+    current_user: TokenData = Depends(get_current_user),
+    db: DBSession = Depends(get_db),
+):
+    """Retrieve all spans belonging to a specific trace_id."""
+    if DATABASE_TYPE == "mongo":
+        mongo_db = get_database()
+        cursor = mongo_db["trace_spans"].find({"trace_id": trace_id}).sort("sequence", 1)
+        raw_spans = await cursor.to_list(length=1000)
+        return [_span_to_response(s, is_mongo=True) for s in raw_spans]
+
+    raw_spans = (
+        db.query(TraceSpan)
+        .filter(TraceSpan.trace_id == trace_id)
+        .order_by(TraceSpan.sequence.asc())
+        .all()
+    )
+    return [_span_to_response(s) for s in raw_spans]
 
 
 def _aggregate(spans: list[TraceSpanResponse]) -> dict:

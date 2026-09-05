@@ -710,73 +710,53 @@ def _estimate_cost_usd(
 
 class _TraceContext:
     """Lightweight mutable trace state for a single streaming generator invocation."""
-    __slots__ = ("session_id", "workflow_run_id", "sequence", "db")
 
     def __init__(self, session_id=None, workflow_run_id=None, db=None):
+        from tracing_service import TraceContext as CoreTraceContext
         self.session_id = session_id
         self.workflow_run_id = workflow_run_id
-        self.sequence = 0
         self.db = db
-
-    def _next_seq(self) -> int:
-        seq = self.sequence
-        self.sequence += 1
-        return seq
+        self.core_ctx = CoreTraceContext(session_id=str(session_id) if session_id else None, workflow_run_id=str(workflow_run_id) if workflow_run_id else None)
 
     def record_llm_span(self, model_name: str, usage: dict, duration_ms: int,
                         round_number: int = 0, prompt_preview: str = "", response_preview: str = "",
                         stop_reason: str | None = None):
-        if not self.db:
-            return
         input_tokens = usage.get("input_tokens", 0)
         output_tokens = usage.get("output_tokens", 0)
         cache_read_tokens = usage.get("cache_read_input_tokens", 0) or 0
         cache_creation_tokens = usage.get("cache_creation_input_tokens", 0) or 0
         cost_usd = _estimate_cost_usd(model_name, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens)
-        span = TraceSpan(
-            session_id=self.session_id,
-            workflow_run_id=self.workflow_run_id,
-            span_type="llm_call",
-            name=model_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_read_tokens=cache_read_tokens,
-            cache_creation_tokens=cache_creation_tokens,
-            cost_usd=cost_usd,
-            duration_ms=duration_ms,
-            status="success",
-            stop_reason=stop_reason,
-            input_data=json.dumps({"prompt_preview": prompt_preview[:5000]}),
-            output_data=json.dumps({"response_preview": response_preview[:5000]}),
-            sequence=self._next_seq(),
-            round_number=round_number,
-        )
-        self.db.add(span)
-        self.db.commit()
+
+        span = self.core_ctx.create_span(name=model_name, span_type="llm_call")
+        span.input_tokens = input_tokens
+        span.output_tokens = output_tokens
+        span.cache_read_tokens = cache_read_tokens
+        span.cache_creation_tokens = cache_creation_tokens
+        span.cost_usd = cost_usd
+        span.duration_ms = duration_ms
+        span.status = "success"
+        span.stop_reason = stop_reason
+        span.round_number = round_number
+        span.input_data = json.dumps({"prompt_preview": prompt_preview[:5000]})
+        span.output_data = json.dumps({"response_preview": response_preview[:5000]})
+        span.finish(status="success")
+
+        from tracing_service import get_trace_provider
+        asyncio.create_task(get_trace_provider().export_span(span))
 
     def record_tool_span(self, tool_name: str, arguments_str: str, result: str,
                          duration_ms: int, round_number: int = 0,
                          span_type: str = "tool_call", status: str = "success"):
-        if not self.db:
-            return
-        span = TraceSpan(
-            session_id=self.session_id,
-            workflow_run_id=self.workflow_run_id,
-            span_type=span_type,
-            name=tool_name,
-            input_tokens=0,
-            output_tokens=0,
-            cache_read_tokens=0,
-            cache_creation_tokens=0,
-            duration_ms=duration_ms,
-            status=status,
-            input_data=json.dumps({"arguments": arguments_str[:5000]}),
-            output_data=json.dumps({"result": str(result)[:5000]}),
-            sequence=self._next_seq(),
-            round_number=round_number,
-        )
-        self.db.add(span)
-        self.db.commit()
+        span = self.core_ctx.create_span(name=tool_name, span_type=span_type)
+        span.duration_ms = duration_ms
+        span.status = status
+        span.round_number = round_number
+        span.input_data = json.dumps({"arguments": arguments_str[:5000]})
+        span.output_data = json.dumps({"result": str(result)[:5000]})
+        span.finish(status=status)
+
+        from tracing_service import get_trace_provider
+        asyncio.create_task(get_trace_provider().export_span(span))
 
 
 async def _save_trace_span_mongo(mongo_db, data: dict):

@@ -907,6 +907,9 @@ class AgentMemoryListResponse(BaseModel):
 
 class TraceSpanResponse(BaseModel):
     id: str
+    trace_id: Optional[str] = None
+    span_id: Optional[str] = None
+    parent_span_id: Optional[str] = None
     session_id: Optional[str] = None
     workflow_run_id: Optional[str] = None
     message_id: Optional[str] = None

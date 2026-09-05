@@ -1741,6 +1741,9 @@ class TraceSpanCollection:
     @classmethod
     async def create_indexes(cls, db):
         collection = db[cls.collection_name]
+        await collection.create_index("trace_id")
+        await collection.create_index("span_id")
+        await collection.create_index("parent_span_id")
         await collection.create_index("session_id")
         await collection.create_index("workflow_run_id")
         await collection.create_index([("session_id", 1), ("sequence", 1)])

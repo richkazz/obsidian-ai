@@ -22,6 +22,17 @@ export interface ContextCompactedEvent {
   summary_preview: string
 }
 
+export interface TraceSpanEvent {
+  trace_id: string
+  span_id: string
+  parent_span_id?: string
+  name: string
+  span_type: string
+  status: string
+  duration_ms?: number
+  cost_usd?: number
+}
+
 export async function streamChat(
   accessToken: string,
   sessionId: string,
@@ -51,6 +62,7 @@ export async function streamChat(
   onToolProposalRequired?: (event: ToolProposalEvent) => void,
   onToolGenerating?: (event: { name: string; handler_type: string }) => void,
   onArtifact?: (event: ArtifactEvent) => void,
+  onTraceSpan?: (event: TraceSpanEvent) => void,
   structured = false,
 ): Promise<void> {
   const body: Record<string, unknown> = {
@@ -193,6 +205,12 @@ export async function streamChat(
                 break
               case "artifact":
                 onArtifact?.(data as ArtifactEvent)
+                break
+              case "span_started":
+              case "span_finished":
+              case "trace_started":
+              case "trace_finished":
+                onTraceSpan?.(data as TraceSpanEvent)
                 break
               case "error":
                 onError(data.error || "Unknown error")

@@ -23,3 +23,11 @@ QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 QDRANT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "obsidian_rag")
 GOOGLE_EMBEDDING_MODEL = os.getenv("GOOGLE_EMBEDDING_MODEL", "gemini-embedding-2")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+
+# Telemetry & Execution Tracing Config
+OTEL_ENABLED = os.getenv("OTEL_ENABLED", "false").lower() in ("true", "1", "t")
+OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "obsidian-backend")
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+TRACE_STORAGE_PROVIDER = os.getenv("TRACE_STORAGE_PROVIDER", "database") # database | otel | noop
+TRACE_CAPTURE_CONTENT = os.getenv("TRACE_CAPTURE_CONTENT", "metadata") # full | metadata | disabled
+TRACE_SAMPLE_RATE = float(os.getenv("TRACE_SAMPLE_RATE", "1.0"))
