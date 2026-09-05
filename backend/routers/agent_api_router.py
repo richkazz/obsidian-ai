@@ -240,7 +240,11 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
     raw = ""
 
     try:
-        raw = await run_agent_headless(session.id, agent_id, db, response_schema=output_schema_dict)
+        raw = await run_agent_headless(
+            session.id, agent_id, db,
+            response_schema=output_schema_dict,
+            override_knowledge_base_ids=body.knowledge_base_ids,
+        )
         output = json.loads(raw or "")
         errors = validate_json_schema(output_schema_dict, output)
     except (json.JSONDecodeError, ValueError, TypeError) as e:
@@ -253,7 +257,11 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
             db.add(Message(session_id=session.id, role="assistant", content=raw or ""))
             db.add(Message(session_id=session.id, role="user", content=repair_prompt))
             db.commit()
-            raw_repair = await run_agent_headless(session.id, agent_id, db, response_schema=output_schema_dict)
+            raw_repair = await run_agent_headless(
+                session.id, agent_id, db,
+                response_schema=output_schema_dict,
+                override_knowledge_base_ids=body.knowledge_base_ids,
+            )
             output = json.loads(raw_repair or "")
             errors = validate_json_schema(output_schema_dict, output)
         except Exception as e:

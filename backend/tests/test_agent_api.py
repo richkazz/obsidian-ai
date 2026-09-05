@@ -266,3 +266,22 @@ def test_external_attachment_requires_data_or_url():
             "media_type": "image/png",
             "file_type": "image",
         }])
+
+def test_external_invocation_with_knowledge_base_ids(setup_data):
+    agent_id = setup_data["agent"].id
+    key = setup_data["api_key"]
+
+    payload = {
+        "input": {"query": "hello with KB"},
+        "knowledge_base_ids": ["kb_test_123"],
+        "output": {"answer": "kb answer"}
+    }
+    res = client.post(
+        f"/api/v1/agent-invocations/{agent_id}",
+        headers={"Authorization": f"Bearer {key}"},
+        json=payload
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "completed"
+    assert data["output"] == {"answer": "kb answer"}

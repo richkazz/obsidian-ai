@@ -46,6 +46,7 @@ async def run_agent_headless(
     wa_should_quote: bool = False,
     current_batch_texts: list[str] | None = None,
     response_schema: dict | None = None,
+    override_knowledge_base_ids: list[str] | None = None,
 ) -> str | None:
     """
     Run the most recent unprocessed user message in a session through its agent
@@ -63,8 +64,13 @@ async def run_agent_headless(
             wa_should_quote=wa_should_quote,
             current_batch_texts=current_batch_texts,
             response_schema=response_schema,
+            override_knowledge_base_ids=override_knowledge_base_ids,
         )
-    return await _run_headless_sqlite(int(session_id), int(agent_id), db, response_schema=response_schema)
+    return await _run_headless_sqlite(
+        int(session_id), int(agent_id), db,
+        response_schema=response_schema,
+        override_knowledge_base_ids=override_knowledge_base_ids,
+    )
 
 
 # ── Provider auto-assignment ───────────────────────────────────────────────────
@@ -172,7 +178,13 @@ async def preprocess_batch(texts: list[str], llm) -> BatchPlan:
 
 # ── SQLite ─────────────────────────────────────────────────────────────────────
 
-async def _run_headless_sqlite(session_id: int, agent_id: int, db, response_schema: dict | None = None) -> str | None:
+async def _run_headless_sqlite(
+    session_id: int,
+    agent_id: int,
+    db,
+    response_schema: dict | None = None,
+    override_knowledge_base_ids: list[str] | None = None,
+) -> str | None:
     from models import Agent, LLMProvider, Message, AgentMemory, ToolDefinition, HITLApproval
     from llm.base import LLMMessage
     from llm.provider_factory import create_provider_from_config
@@ -245,7 +257,10 @@ async def _run_headless_sqlite(session_id: int, agent_id: int, db, response_sche
     from rag_service import VectorStoreContextProvider
     from routers.memory_router import MemoryContextProvider
 
-    kb_ids = json.loads(agent.knowledge_base_ids_json) if getattr(agent, "knowledge_base_ids_json", None) else []
+    if override_knowledge_base_ids is not None:
+        kb_ids = override_knowledge_base_ids
+    else:
+        kb_ids = json.loads(agent.knowledge_base_ids_json) if getattr(agent, "knowledge_base_ids_json", None) else []
     rag_provider = VectorStoreContextProvider(kb_ids=kb_ids, session_id=str(session_id))
     memory_provider = MemoryContextProvider(agent_id=agent.id, user_id=agent.user_id, db=db, db_type="sqlite") if _memory_enabled else None
 
@@ -417,6 +432,7 @@ async def _run_headless_mongo(
     wa_should_quote: bool = False,
     current_batch_texts: list[str] | None = None,
     response_schema: dict | None = None,
+    override_knowledge_base_ids: list[str] | None = None,
 ) -> str | None:
     from database_mongo import get_database
     from models_mongo import AgentCollection, LLMProviderCollection, MessageCollection, AgentMemoryCollection, ToolDefinitionCollection, HITLApprovalCollection
@@ -502,8 +518,11 @@ async def _run_headless_mongo(
     from rag_service import VectorStoreContextProvider
     from routers.memory_router import MemoryContextProvider
 
-    kb_ids_raw = agent.get("knowledge_base_ids_json")
-    kb_ids = json.loads(kb_ids_raw) if isinstance(kb_ids_raw, str) else (kb_ids_raw or [])
+    if override_knowledge_base_ids is not None:
+        kb_ids = override_knowledge_base_ids
+    else:
+        kb_ids_raw = agent.get("knowledge_base_ids_json")
+        kb_ids = json.loads(kb_ids_raw) if isinstance(kb_ids_raw, str) else (kb_ids_raw or [])
     rag_provider = VectorStoreContextProvider(kb_ids=kb_ids, session_id=session_id)
     memory_provider = MemoryContextProvider(agent_id=agent_id, user_id=str(agent.get("user_id", "")), db=mongo_db, db_type="mongo") if _memory_enabled else None
 
