@@ -328,6 +328,7 @@ export function ChatArea() {
             setStreamingArtifact({ id: event.id, title: event.title, type: event.type, content: event.content })
           }
         },
+        undefined,
         structured,
       )
     } catch (err) {
