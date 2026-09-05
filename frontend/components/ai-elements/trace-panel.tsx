@@ -194,8 +194,12 @@ export function TracePanel({ open, onOpenChange, sessionId, workflowRunId }: Tra
     fetch()
   }, [open, sessionId, workflowRunId])
 
+  const [viewMode, setViewMode] = useState<"tree" | "waterfall">("tree")
   const groups = trace ? groupByRound(trace.spans) : []
   const showDividers = groups.length > 1
+
+  const minStartTime = trace && trace.spans.length > 0 ? Math.min(...trace.spans.map(s => new Date(s.created_at).getTime())) : 0
+  const totalSpanDuration = trace ? Math.max(...trace.spans.map(s => (new Date(s.created_at).getTime() - minStartTime) + (s.duration_ms || 0)), 1) : 1
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -204,18 +208,36 @@ export function TracePanel({ open, onOpenChange, sessionId, workflowRunId }: Tra
           <SheetTitle className="text-sm">Execution Trace</SheetTitle>
 
           {trace && (
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <Badge variant="secondary" className="text-[10px] gap-1 px-1.5">
-                <Clock className="h-3 w-3" />
-                {fmtDuration(trace.total_duration_ms)}
-              </Badge>
-              <Badge variant="secondary" className="text-[10px] gap-1 px-1.5">
-                <Zap className="h-3 w-3" />
-                {(trace.total_input_tokens + trace.total_output_tokens).toLocaleString()} tokens
-              </Badge>
-              <Badge variant="secondary" className="text-[10px] px-1.5">
-                {trace.span_count} spans
-              </Badge>
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="secondary" className="text-[10px] gap-1 px-1.5">
+                  <Clock className="h-3 w-3" />
+                  {fmtDuration(trace.total_duration_ms)}
+                </Badge>
+                <Badge variant="secondary" className="text-[10px] gap-1 px-1.5">
+                  <Zap className="h-3 w-3" />
+                  {(trace.total_input_tokens + trace.total_output_tokens).toLocaleString()} tokens
+                </Badge>
+                {trace.total_cost_usd !== undefined && (
+                  <Badge variant="secondary" className="text-[10px] px-1.5 font-mono">
+                    ${trace.total_cost_usd.toFixed(4)}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex border rounded overflow-hidden">
+                <button
+                  onClick={() => setViewMode("tree")}
+                  className={`px-2 py-0.5 text-[10px] font-medium ${viewMode === "tree" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+                >
+                  Tree
+                </button>
+                <button
+                  onClick={() => setViewMode("waterfall")}
+                  className={`px-2 py-0.5 text-[10px] font-medium ${viewMode === "waterfall" ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+                >
+                  Waterfall
+                </button>
+              </div>
             </div>
           )}
         </SheetHeader>
@@ -245,7 +267,7 @@ export function TracePanel({ open, onOpenChange, sessionId, workflowRunId }: Tra
                 </p>
               </div>
             </div>
-          ) : (
+          ) : viewMode === "tree" ? (
             <ScrollArea className="h-full">
               <div className="py-2">
                 {groups.map((group, i) => (
@@ -255,6 +277,35 @@ export function TracePanel({ open, onOpenChange, sessionId, workflowRunId }: Tra
                     showDivider={showDividers && i > 0}
                   />
                 ))}
+              </div>
+            </ScrollArea>
+          ) : (
+            <ScrollArea className="h-full">
+              <div className="py-3 px-4 space-y-2">
+                {trace.spans.map((span) => {
+                  const startTime = new Date(span.created_at).getTime()
+                  const leftPct = Math.max(0, Math.min(100, ((startTime - minStartTime) / totalSpanDuration) * 100))
+                  const widthPct = Math.max(1, Math.min(100 - leftPct, ((span.duration_ms || 10) / totalSpanDuration) * 100))
+                  return (
+                    <div key={span.id} className="text-xs space-y-1 border-b border-border/40 pb-2">
+                      <div className="flex items-center justify-between font-medium">
+                        <span className="truncate max-w-[200px] flex items-center gap-1.5">
+                          <SpanIcon type={span.span_type} />
+                          {span.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {fmtDuration(span.duration_ms)}
+                        </span>
+                      </div>
+                      <div className="w-full bg-muted/40 h-2.5 rounded relative overflow-hidden">
+                        <div
+                          className="bg-primary/70 h-full rounded transition-all"
+                          style={{ left: `${leftPct}%`, width: `${widthPct}%`, position: "absolute" }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </ScrollArea>
           )}

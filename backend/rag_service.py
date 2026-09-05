@@ -329,8 +329,16 @@ async def query_kb_async(
     embedding_provider: str = "google",
     api_key: Optional[str] = None,
     model: Optional[str] = None,
+    trace_context: Any = None,
 ) -> List[dict]:
-    """Query vectors in index for a given knowledge base with dynamic embedding credentials."""
+    """Query vectors in index for a given knowledge base with dynamic embedding credentials and tracing."""
+    span = None
+    if trace_context:
+        span = trace_context.create_span(
+            name=f"rag.search:{kb_id}",
+            span_type="knowledge_retrieval",
+            attributes={"kb_id": kb_id, "query": query[:500], "top_k": top_k},
+        )
     try:
         client = get_embedding_client(provider=embedding_provider, api_key=api_key, model=model)
         query_vector = await client.embed(query)
@@ -371,11 +379,23 @@ async def query_kb_async(
                 "score": float(hit.score),
                 "metadata": payload,
             })
+        if span:
+            span.finish(status="success")
+            from tracing_service import get_trace_provider
+            await get_trace_provider().export_span(span)
         return results
-    except HTTPException:
+    except HTTPException as e:
+        if span:
+            span.finish(status="error", error=str(e))
+            from tracing_service import get_trace_provider
+            await get_trace_provider().export_span(span)
         raise
     except Exception as e:
         logger.warning("KB RAG search failed for kb %s: %s", kb_id, e)
+        if span:
+            span.finish(status="error", error=str(e))
+            from tracing_service import get_trace_provider
+            await get_trace_provider().export_span(span)
         return []
 
 

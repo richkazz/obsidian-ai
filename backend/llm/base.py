@@ -1,7 +1,7 @@
 """Abstract base class for LLM provider integrations."""
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
+from typing import AsyncIterator, Any
 from dataclasses import dataclass, field
 
 
@@ -131,6 +131,7 @@ class BaseLLMProvider(ABC):
         system_prompt: str | None = None,
         tools: list[dict] | None = None,
         response_schema: dict | None = None,
+        trace_context: Any = None,
     ) -> LLMMessage:
         """Non-streaming chat completion."""
         ...
@@ -142,6 +143,7 @@ class BaseLLMProvider(ABC):
         system_prompt: str | None = None,
         tools: list[dict] | None = None,
         response_schema: dict | None = None,
+        trace_context: Any = None,
     ) -> AsyncIterator[LLMStreamChunk]:
         """Streaming chat completion yielding chunks."""
         ...

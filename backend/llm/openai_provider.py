@@ -146,60 +146,80 @@ class OpenAIProvider(BaseLLMProvider):
             msgs.append(msg)
         return msgs
 
-    async def chat(self, messages, system_prompt=None, tools=None, response_schema=None) -> LLMMessage:
+    async def chat(self, messages, system_prompt=None, tools=None, response_schema=None, trace_context=None) -> LLMMessage:
         self._tool_name_map = {}
         payload = self._build_payload(messages, system_prompt, tools, response_schema, stream=False)
-
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                self._url("v1/chat/completions"),
-                json=payload,
-                headers=self._headers(),
+        start_t = time.time()
+        span = None
+        if trace_context:
+            span = trace_context.create_span(
+                name=self.model_id,
+                span_type="llm_call",
+                attributes={"gen_ai.system": "openai", "gen_ai.request.model": self.model_id},
             )
-            if response.status_code == 400:
-                try:
-                    error_body = response.json()
-                    error_msg = error_body.get("error", {}).get("message", str(error_body))
-                except Exception:
-                    error_msg = response.text
-                if tools:
-                    logger.warning(f"OpenAI API returned 400 with tools. Error: {error_msg}. Retrying without tools.")
-                    payload.pop("tools", None)
-                    response = await client.post(
-                        self._url("v1/chat/completions"),
-                        json=payload,
-                        headers=self._headers(),
-                    )
-                    if response.status_code != 200:
-                        try:
-                            error_body2 = response.json()
-                            error_msg2 = error_body2.get("error", {}).get("message", str(error_body2))
-                        except Exception:
-                            error_msg2 = response.text
-                        logger.error(f"OpenAI API returned {response.status_code} on retry. Error: {error_msg2}")
-                        raise Exception(f"OpenAI API error {response.status_code}: {error_msg2}")
-                else:
-                    logger.error(f"OpenAI API returned 400. Error: {error_msg}")
-                    raise Exception(f"OpenAI API error 400: {error_msg}")
 
-            response.raise_for_status()
-            data = response.json()
-            choice = data["choices"][0]
-            raw_content = choice["message"].get("content", "") or ""
-            clean_content, _ = _strip_think_tags(raw_content)
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    self._url("v1/chat/completions"),
+                    json=payload,
+                    headers=self._headers(),
+                )
+                if response.status_code == 400:
+                    try:
+                        error_body = response.json()
+                        error_msg = error_body.get("error", {}).get("message", str(error_body))
+                    except Exception:
+                        error_msg = response.text
+                    if tools:
+                        logger.warning(f"OpenAI API returned 400 with tools. Error: {error_msg}. Retrying without tools.")
+                        payload.pop("tools", None)
+                        response = await client.post(
+                            self._url("v1/chat/completions"),
+                            json=payload,
+                            headers=self._headers(),
+                        )
+                        if response.status_code != 200:
+                            try:
+                                error_body2 = response.json()
+                                error_msg2 = error_body2.get("error", {}).get("message", str(error_body2))
+                            except Exception:
+                                error_msg2 = response.text
+                            logger.error(f"OpenAI API returned {response.status_code} on retry. Error: {error_msg2}")
+                            raise Exception(f"OpenAI API error {response.status_code}: {error_msg2}")
+                    else:
+                        logger.error(f"OpenAI API returned 400. Error: {error_msg}")
+                        raise Exception(f"OpenAI API error 400: {error_msg}")
 
-            raw_tool_calls = choice["message"].get("tool_calls")
-            parsed_tool_calls = None
-            if raw_tool_calls:
-                parsed_tool_calls = [
-                    LLMToolCall(
-                        id=tc.get("id", ""),
-                        name=self._restore_tool_name(tc.get("function", {}).get("name", "")),
-                        arguments=tc.get("function", {}).get("arguments", ""),
-                    )
-                    for tc in raw_tool_calls
-                ]
-            return LLMMessage(role="assistant", content=clean_content, tool_calls=parsed_tool_calls)
+                response.raise_for_status()
+                data = response.json()
+                choice = data["choices"][0]
+                raw_content = choice["message"].get("content", "") or ""
+                clean_content, _ = _strip_think_tags(raw_content)
+
+                raw_tool_calls = choice["message"].get("tool_calls")
+                parsed_tool_calls = None
+                if raw_tool_calls:
+                    parsed_tool_calls = [
+                        LLMToolCall(
+                            id=tc.get("id", ""),
+                            name=self._restore_tool_name(tc.get("function", {}).get("name", "")),
+                            arguments=tc.get("function", {}).get("arguments", ""),
+                        )
+                        for tc in raw_tool_calls
+                    ]
+                res_msg = LLMMessage(role="assistant", content=clean_content, tool_calls=parsed_tool_calls)
+                if span:
+                    span.finish(status="success")
+                    from tracing_service import get_trace_provider
+                    await get_trace_provider().export_span(span)
+                return res_msg
+        except Exception as e:
+            if span:
+                span.finish(status="error", error=str(e))
+                from tracing_service import get_trace_provider
+                await get_trace_provider().export_span(span)
+            raise
 
     async def _parse_stream(self, response) -> AsyncIterator[LLMStreamChunk]:
         """Parse an SSE stream from an OpenAI-compatible endpoint.

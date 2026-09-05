@@ -444,6 +444,9 @@ class TraceSpan(Base):
     __tablename__ = "trace_spans"
 
     id                    = Column(Integer, primary_key=True, index=True)
+    trace_id              = Column(String, nullable=True, index=True)
+    span_id               = Column(String, nullable=True, index=True)
+    parent_span_id        = Column(String, nullable=True, index=True)
     session_id            = Column(Integer, ForeignKey("sessions.id"), nullable=True, index=True)
     workflow_run_id       = Column(Integer, ForeignKey("workflow_runs.id"), nullable=True, index=True)
     message_id            = Column(Integer, ForeignKey("messages.id"), nullable=True)

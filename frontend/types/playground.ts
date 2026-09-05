@@ -562,6 +562,7 @@ export interface SessionTrace {
   total_duration_ms: number
   total_input_tokens: number
   total_output_tokens: number
+  total_cost_usd?: number
   span_count: number
 }
 
@@ -571,6 +572,7 @@ export interface WorkflowRunTrace {
   total_duration_ms: number
   total_input_tokens: number
   total_output_tokens: number
+  total_cost_usd?: number
   span_count: number
 }
 
