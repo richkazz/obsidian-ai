@@ -93,6 +93,19 @@ def test_chat_agent_factory_supported_providers():
     assert agent_nvidia.default_options.get("max_tokens") == 4096
 
 
+@pytest.mark.asyncio
+async def test_chat_agent_chat_stream_preserves_async_iterator_contract():
+    async def fake_chat_stream(*args, **kwargs):
+        yield "chunk"
+
+    agent = ChatAgent(client=MagicMock())
+    agent.client.chat_stream = fake_chat_stream
+
+    chunks = [chunk async for chunk in agent.chat_stream([])]
+
+    assert chunks == ["chunk"]
+
+
 def test_chat_agent_factory_fernet_decryption():
     """Assert Fernet API keys stored in record are decrypted in-memory during creation."""
     raw_key = "sk-fernet-secret-api-key"

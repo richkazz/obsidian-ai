@@ -79,6 +79,17 @@ def _ensure_collection_exists(vector_size: int = 768):
     except Exception as e:
         logger.warning("Error checking/creating Qdrant collection %s: %s", collection_name, e)
 
+    # KB searches filter on this payload field. Qdrant requires a keyword
+    # payload index for filtered queries on remote collections.
+    try:
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name="kb_id",
+            field_schema=qmodels.PayloadSchemaType.KEYWORD,
+        )
+    except Exception as e:
+        logger.debug("Qdrant kb_id payload index already exists or is unavailable: %s", e)
+
 
 def load_or_create_index(kb_id: str, dimension: int = 768, base_dir: Optional[str] = None) -> str:
     """
@@ -323,6 +334,7 @@ async def query_kb_async(
     try:
         client = get_embedding_client(provider=embedding_provider, api_key=api_key, model=model)
         query_vector = await client.embed(query)
+        _ensure_collection_exists(len(query_vector))
         qdrant_client = get_qdrant_client()
 
         kb_filter = qmodels.Filter(

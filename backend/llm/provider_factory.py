@@ -1,5 +1,6 @@
 """Factory for creating MAF ChatAgent and ChatClient instances."""
 
+import inspect
 import json
 import logging
 from typing import Any, Optional
@@ -53,7 +54,12 @@ class ChatAgent(Agent):
     async def chat_stream(self, *args, **kwargs):
         """Backwards compatibility delegation for legacy code calling provider.chat_stream."""
         if hasattr(self.client, "chat_stream") and callable(self.client.chat_stream):
-            return await self.client.chat_stream(*args, **kwargs)
+            stream = self.client.chat_stream(*args, **kwargs)
+            if inspect.isawaitable(stream):
+                stream = await stream
+            async for chunk in stream:
+                yield chunk
+            return
         raise NotImplementedError("Streaming delegate not supported on underlying client")
 
     async def list_models(self) -> list[dict]:
