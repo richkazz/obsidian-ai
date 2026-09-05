@@ -109,6 +109,17 @@ class AnthropicProvider(BaseLLMProvider):
                 converted.append(tool)
         return converted
 
+    def _apply_response_schema(self, payload: dict, response_schema: dict | None) -> None:
+        """Use Anthropic's native structured-output envelope when requested."""
+        if not response_schema:
+            return
+        output_config = dict(payload.get("output_config", {}))
+        output_config["format"] = {
+            "type": "json_schema",
+            "schema": response_schema,
+        }
+        payload["output_config"] = output_config
+
     @staticmethod
     def _build_system(system_prompt: str) -> list[dict]:
         """Wrap system prompt as a structured block with prompt caching enabled."""
@@ -151,6 +162,7 @@ class AnthropicProvider(BaseLLMProvider):
         if system_prompt:
             payload["system"] = self._build_system(system_prompt)
         self._apply_sampling_and_effort(payload)
+        self._apply_response_schema(payload, response_schema)
         if tools:
             payload["tools"] = self._convert_tools(tools)
 
@@ -192,6 +204,7 @@ class AnthropicProvider(BaseLLMProvider):
         if system_prompt:
             payload["system"] = self._build_system(system_prompt)
         self._apply_sampling_and_effort(payload)
+        self._apply_response_schema(payload, response_schema)
         if tools:
             payload["tools"] = self._convert_tools(tools)
 
