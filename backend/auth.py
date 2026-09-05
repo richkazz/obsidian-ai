@@ -306,7 +306,9 @@ async def get_application_api_key(
     New keys are a single opaque value (`oba_<prefix>.<secret>`) and only their
     bcrypt digest is retained.
     """
-    token = credentials.credentials if credentials else api_key
+    token = api_key if api_key and api_key.startswith("oba_") else (
+        credentials.credentials if credentials else api_key
+    )
     if not token or "." not in token:
         raise HTTPException(status_code=401, detail="Application API key required")
     api_key = token

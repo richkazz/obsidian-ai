@@ -169,6 +169,8 @@ async def test_streaming_output_and_sse_formatting(db_session):
         events.append(ev)
 
     event_types = [e["event"] for e in events]
+    assert mock_llm.run.call_args.kwargs["options"] == {"instructions": "Test system prompt"}
+    assert mock_llm.run.call_args.kwargs.get("middleware") is None
     assert "reasoning_delta" in event_types
     assert "content_delta" in event_types
     assert "tool_call" in event_types

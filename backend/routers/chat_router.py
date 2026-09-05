@@ -1733,9 +1733,6 @@ async def _build_user_llm_message(
         kb_chunks = []
         for kb_id in kb_ids:
             kb_name = _kb_names.get(kb_id, kb_id)
-            if not RAGService.has_kb_index(kb_id):
-                kb_meta["unindexed_kbs"].append({"id": kb_id, "name": kb_name})
-                continue
 
             kb_config = {}
             if owner_id:
@@ -1774,6 +1771,8 @@ async def _build_user_llm_message(
                     kb_chunks.append(
                         f"[KB:{r['metadata'].get('doc_name', kb_name)}]:\n{r['text']}"
                     )
+            else:
+                kb_meta["unindexed_kbs"].append({"id": kb_id, "name": kb_name})
         if kb_chunks:
             rag_context += f"\n\nRelevant context from knowledge bases:\n" + "\n\n".join(kb_chunks)
 
@@ -2657,11 +2656,12 @@ async def _stream_response(llm, messages, system_prompt, db, session_id, agent_i
 
         try:
             maf_tools = _to_maf_tools(tools, db, sandbox_container_id_override)
+            llm.middleware = [hitl_and_proposal_middleware]
             run_stream = llm.run(
                 to_maf_messages(messages),
                 stream=True,
                 tools=maf_tools,
-                middleware=[hitl_and_proposal_middleware],
+                options={"instructions": system_prompt} if system_prompt else None,
                 function_invocation_kwargs=function_invocation_kwargs,
             )
             stream_iter = run_stream.__aiter__()
