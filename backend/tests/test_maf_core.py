@@ -106,6 +106,45 @@ async def test_chat_agent_chat_stream_preserves_async_iterator_contract():
     assert chunks == ["chunk"]
 
 
+@pytest.mark.asyncio
+async def test_chat_agent_chat_stream_adapts_framework_client():
+    from agent_framework import Content, Message, ChatResponseUpdate
+    from llm.base import LLMMessage
+
+    class FrameworkClient:
+        def __init__(self):
+            self.calls = []
+
+        def get_response(self, messages, *, stream, options):
+            self.calls.append((messages, stream, options))
+
+            async def updates():
+                yield ChatResponseUpdate(contents=[Content("text", text="hello")])
+                yield ChatResponseUpdate(contents=[Content("function_call", call_id="call-1", name="lookup", arguments={"q": "x"})])
+
+            return updates()
+
+    client = FrameworkClient()
+    agent = ChatAgent(client=client)
+    chunks = [chunk async for chunk in agent.chat_stream(
+        [LLMMessage(role="user", content="question")],
+        system_prompt="be concise",
+        tools=[{"name": "lookup"}],
+    )]
+
+    assert isinstance(client.calls[0][0][0], Message)
+    assert client.calls[0][1] is True
+    assert client.calls[0][2] == {
+        "instructions": "be concise",
+        "tools": [{"name": "lookup"}],
+    }
+    assert [(chunk.type, chunk.content) for chunk in chunks if chunk.type == "content"] == [("content", "hello")]
+    tool_chunk = next(chunk for chunk in chunks if chunk.type == "tool_call")
+    assert tool_chunk.tool_call.name == "lookup"
+    assert tool_chunk.tool_call.arguments == '{"q": "x"}'
+    assert chunks[-1].type == "done"
+
+
 def test_chat_agent_factory_fernet_decryption():
     """Assert Fernet API keys stored in record are decrypted in-memory during creation."""
     raw_key = "sk-fernet-secret-api-key"

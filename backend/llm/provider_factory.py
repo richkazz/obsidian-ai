@@ -12,9 +12,26 @@ from agent_framework.anthropic import AnthropicClient
 from agent_framework.gemini import GeminiChatClient
 from agent_framework.foundry import FoundryChatClient
 
+from .base import LLMStreamChunk, LLMToolCall, to_maf_messages
 from .nvidia_provider import NvidiaProvider
 
 logger = logging.getLogger(__name__)
+
+
+def _usage_from_update(update) -> dict:
+    usage = getattr(update, "usage_details", None)
+    if usage is None:
+        return {}
+    return {
+        key: value
+        for key, value in {
+            "input_tokens": getattr(usage, "input_token_count", None),
+            "output_tokens": getattr(usage, "output_token_count", None),
+            "cache_creation_input_tokens": getattr(usage, "cache_creation_input_token_count", None),
+            "cache_read_input_tokens": getattr(usage, "cache_read_input_token_count", None),
+        }.items()
+        if value is not None
+    }
 
 
 class ChatAgent(Agent):
@@ -60,6 +77,65 @@ class ChatAgent(Agent):
             async for chunk in stream:
                 yield chunk
             return
+
+        if hasattr(self.client, "get_response") and callable(self.client.get_response):
+            messages = args[0] if args else kwargs.pop("messages")
+            system_prompt = kwargs.pop("system_prompt", None)
+            tools = kwargs.pop("tools", None)
+            response_schema = kwargs.pop("response_schema", None)
+            options = dict(kwargs.pop("options", {}) or {})
+            if system_prompt:
+                options["instructions"] = system_prompt
+            if tools:
+                options["tools"] = tools
+            if response_schema:
+                options["response_format"] = response_schema
+
+            stream = self.client.get_response(
+                to_maf_messages(messages),
+                stream=True,
+                options=options or None,
+                **kwargs,
+            )
+            if inspect.isawaitable(stream):
+                stream = await stream
+
+            emitted_done = False
+            tool_calls = {}
+            async for update in stream:
+                for content in getattr(update, "contents", []):
+                    content_type = getattr(content, "type", None)
+                    if content_type == "text" and getattr(content, "text", None):
+                        yield LLMStreamChunk(type="content", content=content.text)
+                    elif content_type == "text_reasoning" and getattr(content, "text", None):
+                        yield LLMStreamChunk(type="reasoning", reasoning=content.text)
+                    elif content_type in ("function_call", "tool_call"):
+                        arguments = getattr(content, "arguments", {})
+                        if not isinstance(arguments, str):
+                            arguments = json.dumps(arguments)
+                        call_id = getattr(content, "call_id", None) or getattr(content, "id", "")
+                        call = tool_calls.setdefault(call_id, {"id": call_id, "name": "", "arguments": ""})
+                        call["name"] = getattr(content, "name", "") or call["name"]
+                        call["arguments"] += arguments
+
+                finish_reason = getattr(update, "finish_reason", None)
+                if finish_reason:
+                    for call in tool_calls.values():
+                        yield LLMStreamChunk(type="tool_call", tool_call=LLMToolCall(**call))
+                    tool_calls.clear()
+                    emitted_done = True
+                    yield LLMStreamChunk(
+                        type="done",
+                        finish_reason=finish_reason,
+                        usage=_usage_from_update(update),
+                    )
+
+            if not emitted_done:
+                for call in tool_calls.values():
+                    yield LLMStreamChunk(type="tool_call", tool_call=LLMToolCall(**call))
+                yield LLMStreamChunk(type="done", finish_reason="stop")
+            return
+
         raise NotImplementedError("Streaming delegate not supported on underlying client")
 
     async def list_models(self) -> list[dict]:
