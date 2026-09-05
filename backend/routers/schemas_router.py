@@ -42,6 +42,17 @@ def create_version(schema_id: int, body: SchemaCreate, db: Session = Depends(get
     version = (db.query(func.max(SchemaVersion.version_number)).filter(SchemaVersion.schema_id == s.id).scalar() or 0) + 1
     v = SchemaVersion(schema_id=s.id, version_number=version, canonical_schema_json=json.dumps(body.canonical_schema), source_format=body.source_format, source_definition=body.source_definition, compatibility_mode=body.compatibility_mode); db.add(v); db.commit(); db.refresh(v); return version_response(v)
 
+@router.get("/{schema_id}/versions", response_model=list[SchemaVersionResponse])
+def list_versions(schema_id: int, db: Session = Depends(get_db), user: TokenData = Depends(get_current_user)):
+    s = owned_schema(db, schema_id, user.user_id)
+    return [
+        version_response(version)
+        for version in db.query(SchemaVersion)
+        .filter(SchemaVersion.schema_id == s.id)
+        .order_by(SchemaVersion.version_number.desc())
+        .all()
+    ]
+
 @router.get("", response_model=list[SchemaResponse])
 def list_schemas(db: Session = Depends(get_db), user: TokenData = Depends(get_current_user)):
     return [schema_response(db, s) for s in db.query(Schema).filter(Schema.user_id == int(user.user_id)).all()]

@@ -176,6 +176,8 @@ export const AppRoutes = {
     TransitionAgentAPI  : (agentId: string, action: string) => `/api/v1/agents/${agentId}/${action}`,
     ListSchemas         : () => "/api/v1/schemas",
     CreateSchema        : () => "/api/v1/schemas",
+    ListSchemaVersions  : (schemaId: string) => `/api/v1/schemas/${schemaId}/versions`,
+    CreateSchemaVersion : (schemaId: string) => `/api/v1/schemas/${schemaId}/versions`,
     ValidateSchema      : (schemaId: string, versionId: string) => `/api/v1/schemas/${schemaId}/versions/${versionId}/validate`,
 
     // Prompt Auto-Optimizer

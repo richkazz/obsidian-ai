@@ -190,6 +190,33 @@ def test_sqlite_kb_migration_backfills_and_alters(db_session):
     session.close()
 
 
+def test_sqlite_trace_spans_migration_adds_trace_identity_columns():
+    import sqlalchemy
+    from main import _run_sqlite_migrations
+
+    engine = create_engine("sqlite:///:memory:")
+    with engine.connect() as conn:
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE trace_spans (
+                id INTEGER PRIMARY KEY,
+                session_id INTEGER,
+                span_type TEXT NOT NULL,
+                name TEXT NOT NULL
+            )
+        """))
+        conn.commit()
+
+    _run_sqlite_migrations(engine)
+
+    with engine.connect() as conn:
+        columns = {
+            row[1]
+            for row in conn.execute(sqlalchemy.text("PRAGMA table_info(trace_spans)"))
+        }
+
+    assert {"trace_id", "span_id", "parent_span_id"} <= columns
+
+
 @pytest.mark.asyncio
 async def test_mongo_kb_schema_fields_and_index_spec():
     """Assert KnowledgeBaseMongo document structure and index specification."""

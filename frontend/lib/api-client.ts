@@ -319,6 +319,21 @@ class ApiClient {
     return this.request<any>(AppRoutes.CreateSchema(), { method: "POST", body: JSON.stringify(data) })
   }
 
+  async listSchemaVersions(schemaId: string): Promise<any[]> {
+    return this.request<any[]>(AppRoutes.ListSchemaVersions(schemaId))
+  }
+
+  async createSchemaVersion(schemaId: string, data: object): Promise<any> {
+    return this.request<any>(AppRoutes.CreateSchemaVersion(schemaId), { method: "POST", body: JSON.stringify(data) })
+  }
+
+  async validateSchema(schemaId: string, versionId: string, payload: unknown): Promise<any> {
+    return this.request<any>(AppRoutes.ValidateSchema(schemaId, versionId), {
+      method: "POST",
+      body: JSON.stringify({ payload }),
+    })
+  }
+
   async deleteAgent(id: string): Promise<void> {
     await this.request<void>(AppRoutes.DeleteAgent(id), {
       method: "DELETE",

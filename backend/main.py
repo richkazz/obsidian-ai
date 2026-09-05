@@ -505,6 +505,9 @@ def _run_sqlite_migrations(engine):
             conn.execute(sqlalchemy.text("""
                 CREATE TABLE IF NOT EXISTS trace_spans (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trace_id TEXT,
+                    span_id TEXT,
+                    parent_span_id TEXT,
                     session_id INTEGER REFERENCES sessions(id),
                     workflow_run_id INTEGER REFERENCES workflow_runs(id),
                     message_id INTEGER REFERENCES messages(id),
@@ -524,6 +527,16 @@ def _run_sqlite_migrations(engine):
             conn.commit()
         except Exception:
             conn.rollback()
+
+        # Add trace identity fields to trace_spans if missing
+        for column in ("trace_id", "span_id", "parent_span_id"):
+            try:
+                conn.execute(sqlalchemy.text(
+                    f"ALTER TABLE trace_spans ADD COLUMN {column} TEXT"
+                ))
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
         # Add cache_read_tokens to trace_spans if missing
         try:

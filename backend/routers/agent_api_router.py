@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Agent, AgentVersion, AgentAPIConfig, Application, ApplicationAgentAccess, SchemaVersion, APIRequest, Message, KnowledgeBase
+from models import Agent, AgentVersion, AgentAPIConfig, Application, ApplicationAgentAccess, Schema, SchemaVersion, APIRequest, Message, KnowledgeBase
 from auth import get_current_user, get_application_api_key, TokenData, ApplicationKeyData
 from schemas import AgentAPIConfigCreate, ExternalInvokeRequest
 from services.schema_validation_service import validate_json_schema
@@ -16,6 +16,24 @@ def require_owner_agent(db, agent_id, user_id):
     agent = db.query(Agent).filter(Agent.id == agent_id, Agent.user_id == int(user_id)).first()
     if not agent: raise HTTPException(404, "Agent not found")
     return agent
+
+def owned_schema_version(db, version_id, user_id, direction):
+    version = (
+        db.query(SchemaVersion)
+        .join(Schema, Schema.id == SchemaVersion.schema_id)
+        .filter(
+            SchemaVersion.id == int(version_id),
+            Schema.user_id == int(user_id),
+            Schema.direction == direction,
+        )
+        .first()
+    )
+    if not version:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{direction.capitalize()} schema version not found for this user",
+        )
+    return version
 
 def config_for(db, agent_id):
     config = db.query(AgentAPIConfig).filter(AgentAPIConfig.agent_id == agent_id).first()
@@ -134,10 +152,10 @@ def get_agent_api_config(agent_id: int, db: Session = Depends(get_db), user: Tok
 @router.put("/agents/{agent_id}/api-config")
 def configure_agent_api(agent_id: int, body: AgentAPIConfigCreate, db: Session = Depends(get_db), user: TokenData = Depends(get_current_user)):
     require_owner_agent(db, agent_id, user.user_id)
-    for version_id in (body.input_schema_version_id, body.output_schema_version_id):
-        if version_id:
-            version = db.query(SchemaVersion).filter(SchemaVersion.id == int(version_id)).first()
-            if not version: raise HTTPException(422, "Schema version not found")
+    if body.input_schema_version_id:
+        owned_schema_version(db, body.input_schema_version_id, user.user_id, "input")
+    if body.output_schema_version_id:
+        owned_schema_version(db, body.output_schema_version_id, user.user_id, "output")
     if body.owner_application_id:
         app = db.query(Application).filter(Application.id == int(body.owner_application_id), Application.user_id == int(user.user_id)).first()
         if not app: raise HTTPException(422, "Application must belong to the agent owner")
@@ -153,6 +171,8 @@ def configure_agent_api(agent_id: int, body: AgentAPIConfigCreate, db: Session =
 def publish_agent(agent_id: int, db: Session = Depends(get_db), user: TokenData = Depends(get_current_user)):
     agent = require_owner_agent(db, agent_id, user.user_id); config = config_for(db, agent_id)
     if not config.input_schema_version_id or not config.output_schema_version_id: raise HTTPException(422, "Published API agents require input and output schemas")
+    owned_schema_version(db, config.input_schema_version_id, user.user_id, "input")
+    owned_schema_version(db, config.output_schema_version_id, user.user_id, "output")
     latest = db.query(AgentVersion).filter(AgentVersion.agent_id == agent_id).order_by(AgentVersion.version_number.desc()).first()
     if not latest:
         from routers.agents_router import _snapshot_agent_sqlite

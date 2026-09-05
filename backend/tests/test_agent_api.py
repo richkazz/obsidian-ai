@@ -242,6 +242,56 @@ def test_meta_schema_validation(setup_data):
     assert res.status_code == 422
     assert "INVALID_JSON_SCHEMA" in res.text
 
+
+def test_api_config_rejects_schema_from_wrong_direction(setup_data):
+    token = setup_data["user_token"]
+    agent_id = setup_data["agent"].id
+    res = client.put(
+        f"/api/v1/agents/{agent_id}/api-config",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "input_schema_version_id": str(setup_data["out_ver"].id),
+            "output_schema_version_id": str(setup_data["out_ver"].id),
+        },
+    )
+    assert res.status_code == 422
+    assert "Input schema version" in res.text
+
+
+def test_api_config_rejects_schema_owned_by_another_user(setup_data):
+    from models import User
+
+    db = next(get_db())
+    try:
+        other_user = User(username="other", email="other@example.com", hashed_password="pw")
+        db.add(other_user)
+        db.flush()
+        other_schema = Schema(user_id=other_user.id, name="Other input", direction="input")
+        db.add(other_schema)
+        db.flush()
+        other_version = SchemaVersion(
+            schema_id=other_schema.id,
+            version_number=1,
+            canonical_schema_json='{"type":"object"}',
+            source_format="json_schema",
+        )
+        db.add(other_version)
+        db.commit()
+        other_version_id = other_version.id
+    finally:
+        db.close()
+
+    res = client.put(
+        f"/api/v1/agents/{setup_data['agent'].id}/api-config",
+        headers={"Authorization": f"Bearer {setup_data['user_token']}"},
+        json={
+            "input_schema_version_id": str(other_version_id),
+            "output_schema_version_id": str(setup_data["out_ver"].id),
+        },
+    )
+    assert res.status_code == 422
+    assert "Input schema version" in res.text
+
 def test_external_attachment_requires_data_or_url():
     from pydantic import ValidationError
     from schemas import ExternalInvokeRequest

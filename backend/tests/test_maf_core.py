@@ -15,6 +15,7 @@ from agent_framework.anthropic import AnthropicClient
 from agent_framework.gemini import GeminiChatClient
 
 from llm.provider_factory import ChatAgent, create_provider_from_config, create_provider
+from llm.anthropic_provider import AnthropicProvider
 from llm.nvidia_provider import NvidiaProvider
 from builtin_tools import BUILTIN_TOOLS, web_search, calculator, weather, time
 from sandbox_tools import create_sandbox_tools, execute_sandbox_tool
@@ -370,3 +371,20 @@ def test_dead_code_verification_nvidia_deleted_and_factory_delegates_to_maf():
     assert isinstance(agent, ChatAgent)
     assert hasattr(agent, "client")
     assert isinstance(agent.client, OpenAIChatClient)
+
+
+def test_anthropic_structured_output_preserves_effort_options():
+    provider = AnthropicProvider(
+        api_key="test-key",
+        model_id="claude-sonnet-5",
+        config={"effort": "medium"},
+    )
+    payload = {"output_config": {"effort": "medium"}}
+    provider._apply_response_schema(payload, {
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+    })
+    assert payload["output_config"]["effort"] == "medium"
+    assert payload["output_config"]["format"]["type"] == "json_schema"
+    assert payload["output_config"]["format"]["schema"]["required"] == ["answer"]
