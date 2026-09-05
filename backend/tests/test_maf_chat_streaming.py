@@ -384,3 +384,90 @@ async def test_client_disconnection_and_cancellation(db_session):
     with pytest.raises(asyncio.CancelledError):
         async for _ in stream_gen:
             pass
+
+
+# 5. _chat_mongo Owner ID Resolution Test
+@pytest.mark.asyncio
+async def test_chat_mongo_owner_id_resolution(monkeypatch):
+    """
+    Assert that _chat_mongo correctly passes owner_id=str(current_user.user_id)
+    without raising NameError.
+    """
+    from routers.chat_router import _chat_mongo
+    from auth import TokenData
+    from schemas import ChatRequest
+
+    recorded_owner_id = None
+
+    async def fake_find_session(db, session_id):
+        return {
+            "_id": session_id,
+            "user_id": "user123",
+            "entity_type": "agent",
+            "entity_id": "agent123",
+        }
+
+    async def fake_find_messages(db, session_id):
+        return []
+
+    async def fake_create_message(db, data):
+        return {"_id": "msg123"}
+
+    async def fake_find_agent(db, agent_id):
+        return {
+            "_id": agent_id,
+            "provider_id": "provider123",
+            "knowledge_base_ids_json": None,
+            "memory_enabled": False,
+            "skill_ids_json": None,
+            "sandbox_enabled": False,
+        }
+
+    async def fake_find_provider(db, provider_id):
+        return {
+            "_id": provider_id,
+            "provider_type": "openai",
+            "api_key": "sk-test",
+            "model_id": "gpt-4o",
+        }
+
+    async def fake_find_user_sessions(db, user_id, **kwargs):
+        return []
+
+    async def fake_find_agent_memories(db, agent_id, user_id):
+        return []
+
+    async def fake_build_user_llm_message(
+        message_text, session_id, image_parts,
+        kb_ids=None, kb_names=None, edit_target=None, past_messages=None,
+        owner_id=None, db=None
+    ):
+        nonlocal recorded_owner_id
+        recorded_owner_id = owner_id
+        from llm.base import LLMMessage
+        return LLMMessage(role="user", content=message_text), {"used_kbs": [], "unindexed_kbs": []}
+
+    async def fake_stream_response_mongo(*args, **kwargs):
+        yield {"event": "done", "data": "{}"}
+
+    monkeypatch.setattr("database_mongo.get_database", lambda: None)
+    monkeypatch.setattr("routers.chat_router.get_database", lambda: None, raising=False)
+    monkeypatch.setattr("models_mongo.SessionCollection.find_by_id", fake_find_session)
+    monkeypatch.setattr("models_mongo.MessageCollection.find_by_session", fake_find_messages)
+    monkeypatch.setattr("models_mongo.MessageCollection.create", fake_create_message)
+    monkeypatch.setattr("models_mongo.AgentCollection.find_by_id", fake_find_agent)
+    monkeypatch.setattr("models_mongo.LLMProviderCollection.find_by_id", fake_find_provider)
+    monkeypatch.setattr("models_mongo.SessionCollection.find_by_user", fake_find_user_sessions)
+    monkeypatch.setattr("models_mongo.AgentMemoryCollection.find_by_agent_user", fake_find_agent_memories)
+    monkeypatch.setattr("routers.chat_router.decrypt_api_key", lambda k: k)
+    monkeypatch.setattr("routers.chat_router._build_user_llm_message", fake_build_user_llm_message)
+    monkeypatch.setattr("routers.chat_router._stream_response_mongo", fake_stream_response_mongo)
+    monkeypatch.setattr("routers.chat_router._load_mcp_server_configs_mongo", AsyncMock(return_value=[]))
+    monkeypatch.setattr("routers.chat_router._build_tools_for_llm_mongo", AsyncMock(return_value=[]))
+
+    request = ChatRequest(session_id="session123", message="Hello", stream=True)
+    current_user = TokenData(user_id="user123", username="testuser", role="user")
+
+    response = await _chat_mongo(request, current_user, start_time=1000.0)
+    assert response is not None
+    assert recorded_owner_id == "user123"

@@ -67,10 +67,12 @@ async def test_vector_store_context_provider_injection_and_fallback(db_session):
     """Assert VectorStoreContextProvider pulls top-k chunks and handles fallback gracefully."""
     provider = VectorStoreContextProvider(kb_ids=["kb_101"], session_id="sess_202", top_k=3)
 
-    # Mock RAGService.search_kb_async and search_async
+    # Mock RAGService.search_kb_async, search_async and resolve_embedding_credentials
     with patch("rag_service.RAGService.search_kb_async", new_callable=AsyncMock) as mock_kb_search, \
-         patch("rag_service.RAGService.search_async", new_callable=AsyncMock) as mock_sess_search:
+         patch("rag_service.RAGService.search_async", new_callable=AsyncMock) as mock_sess_search, \
+         patch("services.key_resolution_service.resolve_embedding_credentials", new_callable=AsyncMock) as mock_resolve:
 
+        mock_resolve.return_value = ("google", "test_key", "gemini-embedding-2")
         mock_kb_search.return_value = [{"text": "Obsidian AI is an orchestration platform."}]
         mock_sess_search.return_value = []
 

@@ -26,9 +26,11 @@ from builtin_tools import execute_builtin_tool, is_builtin_tool
 from agent_framework import function_middleware, FunctionInvocationContext, FunctionTool
 from services.schema_validation_service import validate_json_schema
 
-if DATABASE_TYPE == "mongo":
+try:
     from database_mongo import get_database
     from models_mongo import SessionCollection, MessageCollection, AgentCollection, LLMProviderCollection, ToolDefinitionCollection, SkillCollection, TeamCollection, MCPServerCollection, FileAttachmentCollection, KnowledgeBaseCollection, HITLApprovalCollection, AgentMemoryCollection, ToolProposalCollection, AsyncJobCollection
+except Exception:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -3898,7 +3900,7 @@ async def _chat_mongo(request: ChatRequest, current_user: TokenData, start_time:
         request.message, request.session_id, image_parts,
         kb_ids=_agent_kb_ids_mongo, kb_names=_agent_kb_names_mongo,
         edit_target=_edit_target_mongo_early, past_messages=past_messages,
-        owner_id=str(user.get("id") or user.get("_id")), db=None,
+        owner_id=str(current_user.user_id), db=None,
     )
     messages.append(_user_llm_msg_mongo)
 
