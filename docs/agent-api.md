@@ -82,6 +82,18 @@ URL-backed documents are rejected because the server does not download remote
 documents. Use `agent:read` only for clients that need conversation history;
 invocation-only clients need only `agent:invoke`.
 
+## Session-scoped Knowledge Bases
+
+When multiple callers or users invoke the same published agent but require searching different knowledge bases, callers can pass `knowledge_base_ids` on the invocation request body. This overrides the default knowledge base list configured on the agent for that invocation and session turn:
+
+```json
+{
+   "session_id": "SESSION_ID",
+   "input": {"question": "How do I process a refund?"},
+   "knowledge_base_ids": ["kb_12345"]
+}
+```
+
 ## Access controls
 
 Authorization is evaluated as **Application → API key scopes → explicit agent

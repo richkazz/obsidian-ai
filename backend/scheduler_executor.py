@@ -453,6 +453,7 @@ async def _chat_non_streaming(llm, messages, system_prompt, tools, mcp_configs, 
 def _execute_tool_sqlite(tool_name: str, arguments_str: str, db) -> str:
     import json
     from models import ToolDefinition
+    from routers.chat_router import _prepare_http_request
     try:
         arguments = json.loads(arguments_str) if arguments_str else {}
     except Exception:
@@ -468,17 +469,21 @@ def _execute_tool_sqlite(tool_name: str, arguments_str: str, db) -> str:
     elif tool_def.handler_type == "http":
         import httpx
         config = json.loads(tool_def.handler_config) if tool_def.handler_config else {}
-        url = config.get("url", "")
-        method = config.get("method", "POST").upper()
+        url_template = config.get("url", "")
+        method = config.get("method", "POST")
         headers = config.get("headers", {})
-        if not url:
+        if not url_template:
             return json.dumps({"error": "No URL configured"})
+        url, method_upper, query_params, json_body = _prepare_http_request(url_template, arguments, method)
         try:
             with httpx.Client(timeout=30.0) as client:
-                if method == "GET":
-                    resp = client.get(url, params=arguments, headers=headers)
-                else:
-                    resp = client.request(method, url, json=arguments, headers=headers)
+                resp = client.request(
+                    method_upper,
+                    url,
+                    params=query_params if query_params else None,
+                    json=json_body,
+                    headers=headers,
+                )
                 return resp.text
         except Exception as e:
             return json.dumps({"error": str(e)})
@@ -875,6 +880,7 @@ async def _run_scheduled_dag_mongo(schedule, workflow, steps, run_id, mongo_db):
 async def _execute_tool_mongo_native(tool_name: str, arguments_str: str, mongo_db) -> str:
     """Native (non-MCP) tool execution for the Mongo DAG scheduler path."""
     from models_mongo import ToolDefinitionCollection
+    from routers.chat_router import _prepare_http_request
     try:
         arguments = json.loads(arguments_str) if arguments_str else {}
     except json.JSONDecodeError:
@@ -889,17 +895,21 @@ async def _execute_tool_mongo_native(tool_name: str, arguments_str: str, mongo_d
         return _exec_python_tool(config.get("code", ""), arguments)
     elif handler_type == "http":
         import httpx
-        url = config.get("url", "")
-        method = config.get("method", "POST").upper()
+        url_template = config.get("url", "")
+        method = config.get("method", "POST")
         headers = config.get("headers", {})
-        if not url:
+        if not url_template:
             return json.dumps({"error": "No URL configured"})
+        url, method_upper, query_params, json_body = _prepare_http_request(url_template, arguments, method)
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                if method == "GET":
-                    resp = await client.get(url, params=arguments, headers=headers)
-                else:
-                    resp = await client.request(method, url, json=arguments, headers=headers)
+                resp = await client.request(
+                    method_upper,
+                    url,
+                    params=query_params if query_params else None,
+                    json=json_body,
+                    headers=headers,
+                )
                 return resp.text
         except Exception as e:
             return json.dumps({"error": str(e)})

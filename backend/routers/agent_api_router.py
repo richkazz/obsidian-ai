@@ -106,7 +106,16 @@ def get_agent_api_config(agent_id: int, db: Session = Depends(get_db), user: Tok
     require_owner_agent(db, agent_id, user.user_id)
     config = db.query(AgentAPIConfig).filter(AgentAPIConfig.agent_id == agent_id).first()
     if not config:
-        raise HTTPException(status_code=404, detail="Agent API configuration not found")
+        return {
+            "agent_id": str(agent_id),
+            "owner_application_id": None,
+            "publication_state": "draft",
+            "agent_version": None,
+            "input_schema_version_id": None,
+            "output_schema_version_id": None,
+            "required_scopes": [],
+            "rate_limit": 60,
+        }
     published = db.get(AgentVersion, config.published_version_id) if config.published_version_id else None
     return {
         "agent_id": str(agent_id),
@@ -231,7 +240,11 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
     raw = ""
 
     try:
-        raw = await run_agent_headless(session.id, agent_id, db, response_schema=output_schema_dict)
+        raw = await run_agent_headless(
+            session.id, agent_id, db,
+            response_schema=output_schema_dict,
+            override_knowledge_base_ids=body.knowledge_base_ids,
+        )
         output = json.loads(raw or "")
         errors = validate_json_schema(output_schema_dict, output)
     except (json.JSONDecodeError, ValueError, TypeError) as e:
@@ -244,7 +257,11 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
             db.add(Message(session_id=session.id, role="assistant", content=raw or ""))
             db.add(Message(session_id=session.id, role="user", content=repair_prompt))
             db.commit()
-            raw_repair = await run_agent_headless(session.id, agent_id, db, response_schema=output_schema_dict)
+            raw_repair = await run_agent_headless(
+                session.id, agent_id, db,
+                response_schema=output_schema_dict,
+                override_knowledge_base_ids=body.knowledge_base_ids,
+            )
             output = json.loads(raw_repair or "")
             errors = validate_json_schema(output_schema_dict, output)
         except Exception as e:

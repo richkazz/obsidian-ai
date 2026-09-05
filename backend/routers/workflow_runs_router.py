@@ -81,6 +81,9 @@ def _execute_python_tool(code_str: str, arguments: dict) -> str:
         return json.dumps({"error": str(e)})
 
 
+from routers.chat_router import _prepare_http_request
+
+
 def _execute_tool(tool_name: str, arguments_str: str, db) -> str:
     try:
         arguments = json.loads(arguments_str) if arguments_str else {}
@@ -97,17 +100,21 @@ def _execute_tool(tool_name: str, arguments_str: str, db) -> str:
     elif tool_def.handler_type == "http":
         import httpx
         config = json.loads(tool_def.handler_config) if tool_def.handler_config else {}
-        url = config.get("url", "")
-        method = config.get("method", "POST").upper()
+        url_template = config.get("url", "")
+        method = config.get("method", "POST")
         headers = config.get("headers", {})
-        if not url:
+        if not url_template:
             return json.dumps({"error": "No URL configured for this tool"})
+        url, method_upper, query_params, json_body = _prepare_http_request(url_template, arguments, method)
         try:
             with httpx.Client(timeout=30.0) as client:
-                if method == "GET":
-                    resp = client.get(url, params=arguments, headers=headers)
-                else:
-                    resp = client.request(method, url, json=arguments, headers=headers)
+                resp = client.request(
+                    method_upper,
+                    url,
+                    params=query_params if query_params else None,
+                    json=json_body,
+                    headers=headers,
+                )
                 return resp.text
         except Exception as e:
             return json.dumps({"error": f"HTTP request failed: {e}"})
@@ -138,17 +145,21 @@ async def _execute_tool_mongo(tool_name: str, arguments_str: str, mongo_db) -> s
         return _execute_python_tool(config.get("code", ""), arguments)
     elif handler_type == "http":
         import httpx
-        url = config.get("url", "")
-        method = config.get("method", "POST").upper()
+        url_template = config.get("url", "")
+        method = config.get("method", "POST")
         headers = config.get("headers", {})
-        if not url:
+        if not url_template:
             return json.dumps({"error": "No URL configured for this tool"})
+        url, method_upper, query_params, json_body = _prepare_http_request(url_template, arguments, method)
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                if method == "GET":
-                    resp = await client.get(url, params=arguments, headers=headers)
-                else:
-                    resp = await client.request(method, url, json=arguments, headers=headers)
+                resp = await client.request(
+                    method_upper,
+                    url,
+                    params=query_params if query_params else None,
+                    json=json_body,
+                    headers=headers,
+                )
                 return resp.text
         except Exception as e:
             return json.dumps({"error": f"HTTP request failed: {e}"})
