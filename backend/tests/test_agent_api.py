@@ -228,3 +228,16 @@ def test_external_attachment_requires_data_or_url():
             "media_type": "image/png",
             "file_type": "image",
         }])
+
+
+def test_external_invoke_supports_session_context():
+    from schemas import ExternalInvokeRequest
+
+    request = ExternalInvokeRequest(
+        input={"query": "hello"},
+        system_instruction="Answer in bullets.",
+        knowledge_base_ids=["1", "2", "3"],
+    )
+
+    assert request.system_instruction == "Answer in bullets."
+    assert request.knowledge_base_ids == ["1", "2", "3"]

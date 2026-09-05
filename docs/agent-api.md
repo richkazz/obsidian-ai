@@ -29,6 +29,25 @@ curl -X POST "$OBSIDIAN_URL/api/v1/agent-invocations/123" \
   -d '{"version": 4, "input": {"question": "Where is my order?"}}'
 ```
 
+An invocation may add a session-scoped system instruction and a list of
+knowledge base IDs. The IDs are checked against the agent owner's knowledge
+bases, and the context is used only for that application session:
+
+```json
+{
+   "session_id": "SESSION_ID",
+   "system_instruction": "Answer in concise bullet points.",
+   "knowledge_base_ids": ["42", "43", "44"],
+   "input": {"question": "What is our refund policy?"}
+}
+```
+
+Pass the same `session_id` on later calls to retain conversation context and
+the session's prompt/knowledge selection. A different application session
+using the same agent does not inherit these knowledge IDs or messages. The
+configured agent system prompt is always sent to the model; `system_instruction`
+is appended and stored for that session.
+
 Note: The API accepts application API keys via either `Authorization: Bearer <token>` (recommended) or `X-API-Key: <token>`.
 
 Responses include `request_id`, pinned agent/schema versions, a status, and a

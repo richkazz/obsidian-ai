@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Agent, AgentVersion, AgentAPIConfig, Application, ApplicationAgentAccess, SchemaVersion, APIRequest, Message
+from models import Agent, AgentVersion, AgentAPIConfig, Application, ApplicationAgentAccess, SchemaVersion, APIRequest, Message, KnowledgeBase
 from auth import get_current_user, get_application_api_key, TokenData, ApplicationKeyData
 from schemas import AgentAPIConfigCreate, ExternalInvokeRequest
 from services.schema_validation_service import validate_json_schema
@@ -63,6 +63,18 @@ def create_external_session(agent_id: int, title: str = "API chat", db: Session 
     authorize_agent(db, key, agent_id, "agent:invoke")
     from models import Session as ChatSession
     agent = db.get(Agent, agent_id)
+    if body.knowledge_base_ids is not None:
+        requested_ids = {str(kb_id) for kb_id in body.knowledge_base_ids}
+        allowed_kbs = db.query(KnowledgeBase).filter(
+            KnowledgeBase.id.in_([int(kb_id) for kb_id in requested_ids if kb_id.isdigit()]),
+            KnowledgeBase.is_active == True,
+        ).all()
+        allowed_ids = {
+            str(kb.id) for kb in allowed_kbs
+            if str(kb.owner_id or kb.user_id) == str(agent.user_id) or kb.is_shared
+        }
+        if allowed_ids != requested_ids:
+            raise HTTPException(status_code=403, detail={"code": "KNOWLEDGE_BASE_ACCESS_DENIED"})
     session = ChatSession(
         user_id=agent.user_id,
         application_id=int(key.application_id),
@@ -199,8 +211,25 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
         if not session:
             raise HTTPException(404, detail={"code": "SESSION_NOT_FOUND", "request_id": request_id})
     else:
-        session = ChatSession(user_id=agent.user_id, application_id=int(key.application_id), title="API invocation", entity_type="agent", entity_id=agent_id)
+        session = ChatSession(
+            user_id=agent.user_id,
+            application_id=int(key.application_id),
+            title="API invocation",
+            entity_type="agent",
+            entity_id=agent_id,
+        )
         db.add(session); db.flush()
+
+    if body.system_instruction is not None:
+        session.system_instruction = body.system_instruction
+    if body.knowledge_base_ids is not None:
+        session.knowledge_base_ids_json = json.dumps(body.knowledge_base_ids)
+    db.flush()
+    session_system_instruction = session.system_instruction
+    session_knowledge_base_ids = (
+        json.loads(session.knowledge_base_ids_json)
+        if session.knowledge_base_ids_json else None
+    )
     image_parts = []
     attachment_records = []
     if body.attachments:
@@ -231,7 +260,14 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
     raw = ""
 
     try:
-        raw = await run_agent_headless(session.id, agent_id, db, response_schema=output_schema_dict)
+        raw = await run_agent_headless(
+            session.id,
+            agent_id,
+            db,
+            response_schema=output_schema_dict,
+            system_instruction=session_system_instruction,
+            knowledge_base_ids=session_knowledge_base_ids,
+        )
         output = json.loads(raw or "")
         errors = validate_json_schema(output_schema_dict, output)
     except (json.JSONDecodeError, ValueError, TypeError) as e:
@@ -244,7 +280,14 @@ async def invoke_agent(agent_id: int, body: ExternalInvokeRequest, db: Session =
             db.add(Message(session_id=session.id, role="assistant", content=raw or ""))
             db.add(Message(session_id=session.id, role="user", content=repair_prompt))
             db.commit()
-            raw_repair = await run_agent_headless(session.id, agent_id, db, response_schema=output_schema_dict)
+            raw_repair = await run_agent_headless(
+                session.id,
+                agent_id,
+                db,
+                response_schema=output_schema_dict,
+                system_instruction=session_system_instruction,
+                knowledge_base_ids=session_knowledge_base_ids,
+            )
             output = json.loads(raw_repair or "")
             errors = validate_json_schema(output_schema_dict, output)
         except Exception as e:

@@ -99,6 +99,31 @@ async def test_vector_store_context_provider_injection_and_fallback(db_session):
 
 
 @pytest.mark.asyncio
+async def test_vector_store_context_provider_passes_sqlite_db_for_credentials(db_session):
+    provider = VectorStoreContextProvider(kb_ids=["kb_101"], top_k=3, db=db_session)
+
+    with patch("rag_service.RAGService.search_kb_async", new_callable=AsyncMock) as mock_kb_search, \
+         patch("services.key_resolution_service.resolve_embedding_credentials", new_callable=AsyncMock) as mock_credentials:
+        mock_kb_search.return_value = [{"text": "Scoped KB result"}]
+        mock_credentials.return_value = ("openai", "resolved-key", "text-embedding-3-small")
+
+        class MockMessage:
+            text_content = "What is in the KB?"
+
+        class MockContext:
+            input_messages = [MockMessage()]
+            instructions = []
+            def extend_instructions(self, source_id, instruction):
+                self.instructions.append(instruction)
+
+        await provider.before_run(
+            agent=MagicMock(user_id=7), session=None, context=MockContext(), state={}
+        )
+
+        assert mock_credentials.call_args.kwargs["db"] is db_session
+
+
+@pytest.mark.asyncio
 async def test_memory_context_provider_injection(db_session):
     """Assert MemoryContextProvider pulls active user memories sorted by confidence up to cap 50."""
     # Seed 3 memories

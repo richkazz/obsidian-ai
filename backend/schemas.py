@@ -1308,6 +1308,8 @@ class ExternalInvokeRequest(BaseModel):
     input: object
     version: Optional[int] = None
     session_id: Optional[str] = None
+    system_instruction: Optional[str] = None
+    knowledge_base_ids: Optional[list[str]] = None
     attachments: list[FileAttachmentInfo] = []
     # An explicit value lets non-LLM/testing integrations supply the already
     # structured result; production execution still validates server-side.

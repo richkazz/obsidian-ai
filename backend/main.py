@@ -192,6 +192,18 @@ def _run_sqlite_migrations(engine):
         except Exception:
             conn.rollback()
 
+        for column, definition in (
+            ("system_instruction", "TEXT"),
+            ("knowledge_base_ids_json", "TEXT"),
+        ):
+            try:
+                conn.execute(sqlalchemy.text(
+                    f"ALTER TABLE sessions ADD COLUMN {column} {definition}"
+                ))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+
         # Create knowledge_bases table if missing
         try:
             conn.execute(sqlalchemy.text("""

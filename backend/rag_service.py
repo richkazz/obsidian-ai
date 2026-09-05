@@ -656,6 +656,7 @@ class VectorStoreContextProvider(ContextProvider if ContextProvider != object el
         top_k: int = 5,
         source_id: str = "vector_rag",
         api_key: Optional[str] = None,
+        db: Any = None,
     ):
         if ContextProvider != object:
             super().__init__(source_id=source_id)
@@ -665,6 +666,7 @@ class VectorStoreContextProvider(ContextProvider if ContextProvider != object el
         self.session_id = session_id
         self.top_k = top_k
         self.api_key = api_key
+        self.db = db
 
     async def before_run(
         self,
@@ -720,7 +722,7 @@ class VectorStoreContextProvider(ContextProvider if ContextProvider != object el
 
                 from services.key_resolution_service import resolve_embedding_credentials
                 e_prov, e_key, e_model = await resolve_embedding_credentials(
-                    owner_id, kb_config
+                    owner_id, kb_config, db=self.db
                 )
 
                 res = await RAGService.search_kb_async(

@@ -594,7 +594,7 @@ Use the above grounded knowledge to inform your response.`}
               POST /api/v1/agent-invocations/&lt;AGENT_ID&gt;
             </p>
             <p className="text-sm text-muted-foreground">
-              Executes a published agent contract with strict JSON schema input and output validation.
+              Executes a published agent contract with strict JSON schema input and output validation. The agent&apos;s configured system prompt is always sent to the model.
             </p>
 
             <pre className="p-4 bg-muted rounded-lg text-xs font-mono overflow-x-auto border border-border">
@@ -605,9 +605,20 @@ Use the above grounded knowledge to inform your response.`}
     "input": {
       "query": "Where is my order #5001?"
     },
-    "session_id": "sess_889922"
+    "session_id": "sess_889922",
+    "system_instruction": "Answer in concise bullet points.",
+    "knowledge_base_ids": ["42", "43", "44"]
   }'`}
             </pre>
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg space-y-2 text-xs">
+              <p className="font-semibold text-emerald-600 dark:text-emerald-400">Session-scoped context</p>
+              <p className="text-muted-foreground">
+                <code className="font-mono">system_instruction</code> is appended to the agent prompt and
+                <code className="font-mono"> knowledge_base_ids</code> selects the knowledge bases for this application session.
+                Both values are retained when the same <code className="font-mono">session_id</code> is reused. A separate
+                application session using the same agent does not inherit them. Knowledge base IDs must belong to the agent owner or be shared.
+              </p>
+            </div>
           </section>
 
           {/* Section: Sessions & History */}
@@ -680,6 +691,10 @@ GET /api/v1/agent-sessions/<SESSION_ID>/messages`}
                 <p className="font-mono font-bold text-rose-500">Embedding provider credentials invalid or missing (400)</p>
                 <p className="text-muted-foreground mt-1">RAG embedding provider key not found in Secrets Vault or LLMProviders.</p>
               </div>
+              <div className="p-3 border rounded-md bg-card">
+                <p className="font-mono font-bold text-rose-500">KNOWLEDGE_BASE_ACCESS_DENIED (403)</p>
+                <p className="text-muted-foreground mt-1">One or more requested knowledge base IDs are not owned by the agent owner or shared with the application.</p>
+              </div>
             </div>
           </section>
 
@@ -744,7 +759,9 @@ print("Doc Ingest:", doc_res.json())`}
     },
     body: JSON.stringify({
       input: { query },
-      session_id: "sess_custom_id"
+      session_id: "sess_custom_id",
+      system_instruction: "Answer in concise bullet points.",
+      knowledge_base_ids: ["42", "43", "44"]
     })
   });
   const data = await response.json();
