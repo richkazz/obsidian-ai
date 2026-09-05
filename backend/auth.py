@@ -306,13 +306,15 @@ async def get_application_api_key(
     New keys are a single opaque value (`oba_<prefix>.<secret>`) and only their
     bcrypt digest is retained.
     """
+    api_key = api_key.strip() if api_key else api_key
+    bearer_token = credentials.credentials.strip() if credentials else None
     token = api_key if api_key and api_key.startswith("oba_") else (
-        credentials.credentials if credentials else api_key
+        bearer_token if bearer_token else api_key
     )
     if not token or "." not in token:
         raise HTTPException(status_code=401, detail="Application API key required")
     api_key = token
-    prefix, secret = api_key.split(".", 1)
+    prefix, secret = (part.strip() for part in token.split(".", 1))
     from models import APIKey, Application
     from services.api_key_service import verify_api_key
     key = db.query(APIKey).filter(APIKey.key_prefix == prefix).first()

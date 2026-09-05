@@ -156,6 +156,16 @@ def test_application_key_preferred_over_user_bearer(setup_data):
     assert res.status_code == 200
     assert res.json()["status"] == "completed"
 
+def test_application_key_allows_copied_header_whitespace(setup_data):
+    agent_id = setup_data["agent"].id
+    payload = {"input": {"query": "hello"}, "output": {"answer": "world"}}
+    res = client.post(
+        f"/api/v1/agent-invocations/{agent_id}",
+        headers={"X-API-Key": f"  {setup_data['api_key']}  "},
+        json=payload,
+    )
+    assert res.status_code == 200
+
 def test_presupplied_output_validation_failure(setup_data):
     agent_id = setup_data["agent"].id
     key = setup_data["api_key"]
