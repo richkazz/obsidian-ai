@@ -5,6 +5,7 @@ import httpx
 from typing import AsyncIterator
 
 from .base import BaseLLMProvider, LLMMessage, LLMStreamChunk, LLMToolCall
+from .schema_utils import format_schema_dict_for_gemini
 
 
 class GoogleProvider(BaseLLMProvider):
@@ -70,7 +71,7 @@ class GoogleProvider(BaseLLMProvider):
             generation_config["maxOutputTokens"] = self.config["max_tokens"]
         if response_schema:
             generation_config["responseMimeType"] = "application/json"
-            generation_config["responseJsonSchema"] = response_schema
+            generation_config["responseJsonSchema"] = format_schema_dict_for_gemini(response_schema)
         if generation_config:
             payload["generationConfig"] = generation_config
 

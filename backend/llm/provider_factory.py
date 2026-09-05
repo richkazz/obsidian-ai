@@ -14,6 +14,7 @@ from agent_framework.foundry import FoundryChatClient
 
 from .base import LLMStreamChunk, LLMToolCall, to_maf_messages
 from .nvidia_provider import NvidiaProvider
+from .schema_utils import format_schema_for_gemini
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,14 @@ class ChatAgent(Agent):
             if tools:
                 options["tools"] = tools
             if response_schema:
-                options["response_format"] = response_schema
+                if isinstance(self.client, GeminiChatClient) or getattr(self.client, "provider_type", None) in ("google", "gemini"):
+                    formatted = format_schema_for_gemini(response_schema)
+                    if isinstance(formatted, dict):
+                        options["response_format"] = formatted
+                    else:
+                        options["response_schema"] = formatted
+                else:
+                    options["response_format"] = response_schema
 
             stream = self.client.get_response(
                 to_maf_messages(messages),
